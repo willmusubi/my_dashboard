@@ -1,159 +1,162 @@
 # 工作流程（Workflow）
 
-這套流程把模糊的需求轉換成範圍有界、可審查、可驗證的 AI 工作。
+这套流程把模糊的需求转换成范围有界、可审查、可验证的 AI 工作。
 
-若是全新專案、還沒有 Epic/User Story 待辦清單，先執行 `project-kickoff` skill。它會把專案拆解成 Epic → User Story → Task，並建進 `tools/kanban/epics.json` 與 `tools/kanban/cards/`。之後每張任務卡再個別走過下面的各個階段。
+全新项目、还没有 Epic/User Story 待办清单时，先跑 `project-kickoff` skill。
+它会把项目拆成 Epic → User Story → Task，建进 `tools/kanban/epics.json` 与
+`tools/kanban/cards/`。之后每张任务卡各自走一遍下面的阶段。
 
 ## Phase 0：收件（Intake）
 
-先收下需求，不要實作。
+先收下需求，不要实作。
 
-輸出：
+输出：
 
-- 問題陳述。
-- 使用者或商業目標。
+- 问题陈述。
+- 用户或业务目标。
 - 已知限制。
-- 未知事項。
-- 是否涉及 UI、資料、身分驗證、金流、基礎設施或遷移。
+- 未知事项。
+- 是否涉及 UI、数据、认证、支付、基础设施或迁移。
 
-關卡：
+关卡：
 
-- 若需求不是小而明確的，進入釐清階段。
+- 需求不是小而明确的，进入澄清阶段。
 
 ## Phase 1：情境探索（Context Discovery）
 
-只搜尋到足以理解專案相關部分的程度。
+只搜索到足以理解项目相关部分的程度。
 
-必要輸出：
+必要输出：
 
-- 任務專屬的情境包。
-- 相關檔案。
-- 應遵循的既有模式。
-- 風險區域。
-- 驗證指令。
-- 情境預算備註：讀了什麼、跳過了什麼、為什麼。
+- 任务专属的情境包。
+- 相关文件。
+- 应遵循的既有模式。
+- 风险区域。
+- 验证命令。
+- 情境预算备注：读了什么、跳过了什么、为什么。
 
-使用 `ai/process/context-protocol.md`。
+用 `ai/process/context-protocol.md`。
 
-## Phase 2：釐清（Clarification）
+## Phase 2：澄清（Clarification）
 
-把模糊的意圖轉成產品層級的規格書。
+把模糊的意图转成产品层级的规格书。
 
-必要輸出：
+必要输出：
 
-- 功能規格書：以 `ai/templates/feature-spec.md` 為範本，產出到 `ai/artifacts/<Epic>/feature-spec.md`（所有產出物的存放慣例見 `ai/artifacts/README.md`；範本唯讀，不得覆寫）。
-- 待釐清問題。
-- 明確的非目標。
-- 驗收標準。
+- 功能规格书：以 `ai/templates/feature-spec.md` 为范本，产出到
+  `ai/artifacts/<Epic>/feature-spec.md`（存放惯例见 `ai/artifacts/README.md`；范本只读，不得覆写）。
+- 待厘清问题。
+- 明确的非目标。
+- 验收标准。
 
-關卡：
+关卡：
 
-- 進入架構規劃前需要人工核准。
+- **进入架构规划前需要人工核准。**
 
-## Phase 3：UI Mockup 關卡
+## Phase 3：UI Mockup 关卡
 
-涉及畫面、視覺狀態或互動流程時需要。
+涉及画面、视觉状态或交互流程时需要。
 
-先讀 `ai/context/design-system.md`（Epic 0 產出的設計系統單一事實來源）。mockup 變體必須以其中已定案的 design token 與元件庫組成，不得憑空發明新風格；缺的元件依 `ai/skills/ui-mockup-gate.md` 的「查庫→照風格補做→登記回庫」規則處理。視覺品質套用 `ai/skills/design-craft.md` 的設計工藝紀律。
+先读 `ai/context/design-system.md`。mockup 变体必须以其中已定案的 design token
+与组件库组成，不得凭空发明新风格；缺的组件依 `ai/skills/ui-mockup-gate.md` 的
+「查库 → 照风格补做 → 登记回库」规则处理。视觉品质套用 `ai/skills/design-craft.md`。
 
-必要輸出：
+必要输出：
 
-- 畫面地圖。
-- 狀態地圖。
-- 2-3 個 mockup 變體（以既有 token／元件組成）。
-- 重用的 token／元件清單，與需新做並登記的元件（如有）。
-- 取捨比較表。
-- 選定的變體。
+- 画面地图。
+- 状态地图。
+- **2-3 个 mockup 变体**（以既有 token／组件组成）。
+- 重用的 token／组件清单，与需新做并登记的组件（如有）。
+- 取舍比较表。
+- 选定的变体。
 
-關卡：
+关卡：
 
-- 實作前需要人工選定。
+- **实作前需要人工选定。这是整套流程里最值钱的一关，不要省。**
 
-## Phase 4：架構規劃（Architecture Plan）
+## Phase 4：架构规划（Architecture Plan）
 
-建立技術做法。
+建立技术做法。
 
-必要輸出：
+必要输出：
 
-- 預期會變更的檔案。
-- 資料與 API 契約。
-- 遷移備註（如有）。
-- 安全性與隱私備註。
-- 測試策略。
-- 高風險工作的回滾計畫。
+- 预期会变更的文件。
+- 数据与 API 契约。
+- 迁移备注（如有）。
+- 安全与隐私备注。
+- 测试策略。
+- 高风险工作的回滚计划。
 
-關卡：
+关卡：
 
-- 高風險工作需要 architect、security 與 test 審查。
+- 高风险工作需要 architect、security 与 test 审查。
 
-## Phase 5：任務卡（Task Cards）
+## Phase 5：任务卡（Task Cards）
 
-把工作拆成 AI-ready 的卡片。
+把工作拆成 AI-ready 的卡片。每张卡都必须符合 `ai/process/definition-of-ready.md`。
 
-每張卡都必須符合 `ai/process/definition-of-ready.md`。
+建议的卡片大小：
 
-建議的卡片大小：
+- 一个画面状态。
+- 一个 API endpoint。
+- 一个组件行为。
+- 一个 bug 的重现与修复。
+- 一个测试缺口。
 
-- 一個畫面狀態。
-- 一個 API endpoint。
-- 一個元件行為。
-- 一個 bug 的重現與修復。
-- 一個測試缺口。
+## Phase 6：实作（Implementation）
 
-## Phase 6：實作（Implementation）
+一次只实作一张已核准的任务卡。
 
-一次只實作一張已核准的任務卡。
+规则：
 
-規則：
-
-- 寫新程式碼前，先確認是否已有現成的函式庫或框架能解決這個問題，避免重造已解決的輪子。
-- 若有 2-3 個可行的函式庫或做法，詢問使用者要用哪一種並提出建議。重大選擇不要自己悶著頭選。
-- 除非有新事證需要更新計畫，否則只能動允許範圍內的檔案。
-- 遵循既有專案模式。
-- UI 實作一律取用 `ai/context/design-system.md` 的 design token 與元件庫，不硬寫一次性的色彩、間距或字級；新做的元件要照既有 token 與風格製作，完成後登記回元件庫 inventory。視覺實作全程遵循 `ai/skills/design-craft.md`，交付前對照 `ai/checklists/design-review-checklist.md`。
+- **开工前先读那张卡**：`cat tools/kanban/cards/<ID>.json`。
+  卡片 `comments` 里人写的内容是指令，不是背景资料。
+- 写新代码前，先确认是否已有现成的库或框架能解决这个问题，避免重造轮子。
+- 若有 2-3 个可行的库或做法，**问用户要用哪一种并提出建议**。重大选择不要自己闷头选。
+- 除非有新证据需要更新计划，否则只动允许范围内的文件。
+- 遵循既有项目模式。
+- UI 实作一律取用 `ai/context/design-system.md` 的 token 与组件库，不硬写一次性的
+  色彩、间距或字级；新做的组件照既有 token 与风格制作，完成后登记回 inventory。
+  全程遵循 `ai/skills/design-craft.md`，交付前对照 `ai/checklists/design-review-checklist.md`。
 - 保持 diff 小。
-- 每個增量都必須讓系統維持在可運作、可執行的狀態，絕不能任務做到一半就停下、留下壞掉或無法啟動的系統。
-- 隨著變更新增或更新測試。
-- 進入驗證階段前自己先跑過測試（單元測試與整合測試），不要只憑「看起來是對的」。
-- 撰寫程式碼的當下就要套用 `ai/checklists/security-checklist.md`，不是只有正式審查時才做。無論風險等級高低都適用（例如絕不以明文儲存密鑰或密碼）。
-- 範圍改變時停下來詢問。
-- 若這個任務有在 `tools/kanban/` 上追蹤，隨著進度把卡片的階段往前推（見 `ai/process/kanban.md`）。
+- **每个增量都要让系统维持在可运行状态**，绝不能任务做到一半就停下、留下跑不起来的系统。
+- 随着变更新增或更新测试。
+- 进入验证阶段前自己先跑过测试，不要只凭「看起来是对的」。
+- 写代码的当下就套用 `ai/checklists/security-checklist.md`，不是只有正式审查时才做。
+  无论风险等级高低都适用（例如绝不以明文存储密钥或密码）。
+- **范围改变时停下来询问。**
+- 随进度推进看板卡片的阶段（见 `ai/process/kanban.md`）。
+  卡片有 `rev` 字段做乐观锁：整卡 PUT 要带 `If-Match: <rev>`，收到 409 表示
+  这张卡在你读到之后被人改过——重新读取后再改，不要硬覆盖。
 
-## Phase 7：驗證（Verification）
+## Phase 7：验证（Verification）
 
-完成需要證據佐證。
+完成需要证据佐证。
 
-使用：
-
-- 單元測試。
-- 整合測試。
-- E2E 測試。
-- 型別檢查（Typecheck）。
+- 单元测试。
+- 集成测试。
+- E2E 测试。
+- 类型检查。
 - Lint。
 - Build。
-- 安全性掃描工具。
-- UI 的螢幕截圖比對。
+- 安全扫描。
+- UI 截图比对。
 
-## Phase 8：審查（Review）
+证据写进卡片的 `evidence` 字段，不要只写在聊天里。
 
-執行相關的審查關卡：
+## Phase 8：审查（Review）
 
-- 產品驗收。
-- UX 審查。
-- 架構審查。
-- 安全性審查。
-- 測試審查。
-- Code review。
+执行相关的审查关卡：产品验收 / UX 审查 / 架构审查 / 安全审查 / 测试审查 / code review。
 
-使用 `ai/process/review-gates.md`。
+用 `ai/process/review-gates.md`。**代理输出本身不等于核准。**
 
-## Phase 9：人工驗收（Human Acceptance）
+## Phase 9：人工验收（Human Acceptance）
 
-最終回覆必須包含：
+最终回复必须包含：
 
-- 變更了什麼。
-- 證據。
-- 殘留風險。
-- 後續任務。
+- 变更了什么。
+- 证据。
+- 残留风险。
+- 后续任务。
 
-沒有驗證證據前，不得宣稱已可上生產環境。
+**没有验证证据前，不得宣称已可上生产环境。**
