@@ -1,6 +1,6 @@
 ---
 name: spec-interrogation
-description: 將模糊的功能需求轉換為可供人工審閱的功能規格書，明確列出需求、非目標、邊界案例與驗收標準。
+description: 本项目治理流程：需求还模糊、想先看一份规格书再动手时使用。把模糊意图转成明确的需求、非目标、边界情况与验收标准。
 ---
 
-請閱讀並遵循 `ai/skills/spec-interrogation.md`（此為 Claude Code 與 Codex 共用的正本內容）。
+请阅读并遵循 `ai/skills/spec-interrogation.md`（这是本项目的正本内容，SKILL.md 只是指针）。

@@ -2,28 +2,47 @@
 
 # Claude Code 指令
 
-本檔案為 Claude Code 專屬的路由層，補充上方 `AGENTS.md` 所定義的共用作業規則與流程（該檔案也供 Codex 等其他 AI 工具讀取，為單一事實來源）。詳細規則位於 `ai/process/`。
+本文件是 Claude Code 专属的路由层，补充 `AGENTS.md` 定义的作业规则。
+保持简短——可复用的工作流程放在 `.claude/skills/`，详细规则放在 `ai/process/`。
 
-- 保持 `CLAUDE.md` 簡短。可重複使用的工作流程放在 `.claude/skills/`。
+## Skill 路由（本项目优先于全局 skill）
 
-## Skill 路由
+本机装有 140+ 个全局 skill，其中不少和本项目的 skill 功能重叠。做以下事情时，
+**用本项目的，不要用全局的**：
 
-- 全新專案的 Epic/User Story/Task 拆解：`project-kickoff`
-- 程式碼庫搜尋：`project-search`
-- 需求釐清：`spec-interrogation`
-- UI 替代方案與畫面狀態：`ui-mockup-gate`
-- UI 視覺品質與設計工藝：`design-craft`
-- 技術規劃與任務卡：`implementation-plan`
-- 安全性與可維護性審查：`security-maintainability-review`
-- 測試與驗證證據：`test-verification`
+| 要做的事 | 用这个 | 不要用 |
+|---|---|---|
+| 全新项目拆 Epic/Story/Task | `project-kickoff` | — |
+| 找代码、建情境包 | `project-search` | `investigate` / `systematic-debugging` |
+| 需求澄清、写规格书 | `spec-interrogation` | `spec` / `brainstorming` / `writing-plans` |
+| UI 方案选型与画面状态 | `ui-mockup-gate` | `design-shotgun` / `design-consultation` |
+| UI 视觉品质与设计工艺 | `design-craft` | `frontend-design` / `design-review` |
+| 技术规划与任务卡 | `implementation-plan` | `writing-plans` / `executing-plans` |
+| 安全性与可维护性审查 | `security-maintainability-review` | `review` / `requesting-code-review` |
+| 测试与验证证据 | `test-verification` | `qa` / `verification-before-completion` |
+
+理由：全局 skill 的描述更多也更触发导向，在描述匹配上通常会赢；但它们不认识
+本项目的关卡、产出物惯例和看板协议。
+
+## 本项目禁用
+
+- **`ship` / `land-and-deploy` / `autoplan`** —— 这几个 gstack skill 的设计目标是
+  快速自动决策（`autoplan` 明写「with auto-decisions」）。那是本项目治理模型的
+  精确反面：在这里跑它们会静默绕过全部人工关卡。要发布就手动走 `workflow.md` 的
+  Phase 7-9。
 
 ## 子代理路由
 
-- 產品面模糊性：`product-planner`
-- UI 與互動品質：`ux-reviewer`
-- 架構或跨切面變更：`architect`
-- 安全性敏感變更：`security-reviewer`
-- 測試策略與回歸風險：`test-engineer`
+- 产品面模糊性：`product-planner`
+- UI 与互动品质：`ux-reviewer`
+- 架构或跨切面变更：`architect`
+- 安全性敏感变更：`security-reviewer`
+- 测试策略与回归风险：`test-engineer`
 
-不得將代理（agent）輸出視為核准。人工核准仍是
-`ai/process/review-gates.md` 中所定義各關卡（gate）的必要條件。
+## 最重要的一条
+
+**不得把代理输出当成核准。** 人工核准是 `ai/process/review-gates.md` 每一道关卡的
+必要条件。代理可以给出判断、证据和建议，但「通过」只能由人说。
+
+同理：卡片上人写的 `comments` 是指令，agent 写的是记录。要推翻人的决策，
+先问人，不要自己改。

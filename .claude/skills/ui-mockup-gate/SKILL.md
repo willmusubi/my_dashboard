@@ -1,6 +1,6 @@
 ---
 name: ui-mockup-gate
-description: 在實作前產出多個 UI mockup 變體與畫面狀態規格書，然後停下來等待人工選擇。
+description: 本项目治理流程：动手做任何 UI 之前使用。产出 2-3 个 mockup 变体与画面状态规格，然后停下来等人选一个，不要自己替人决定。
 ---
 
-請閱讀並遵循 `ai/skills/ui-mockup-gate.md`（此為 Claude Code 與 Codex 共用的正本內容）。
+请阅读并遵循 `ai/skills/ui-mockup-gate.md`（这是本项目的正本内容，SKILL.md 只是指针）。

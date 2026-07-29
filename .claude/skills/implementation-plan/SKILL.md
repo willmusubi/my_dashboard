@@ -1,6 +1,6 @@
 ---
 name: implementation-plan
-description: 將已核准的規格書轉換為架構筆記與範圍受限、附驗證契約的 AI-ready 任務卡。
+description: 本项目治理流程：规格书已定、要把它拆成能交给 AI 执行的任务卡时使用。产出架构笔记与范围受限、带验证契约的任务卡。
 ---
 
-請閱讀並遵循 `ai/skills/implementation-plan.md`（此為 Claude Code 與 Codex 共用的正本內容）。
+请阅读并遵循 `ai/skills/implementation-plan.md`（这是本项目的正本内容，SKILL.md 只是指针）。

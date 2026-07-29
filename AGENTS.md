@@ -1,48 +1,58 @@
 # Agent 指令
 
-本專案使用 Monstrare。請遵循
-`ai/process/workflow.md` 中的共用流程。
+本项目使用一套关卡式治理流程，fork 自 Monstrare（见 `NOTICE.md`）。
+共用流程在 `ai/process/workflow.md`，详细规则在 `ai/process/` 下。
 
-## 操作規則
+## 操作规则
 
-- 不得根據模糊的需求實作非小型（non-trivial）變更。
-- 從情境探索（context discovery）與任務專屬的情境包（context pack）開始。
-- 實作前使用 `ai/process/definition-of-ready.md`。
-- 宣告完成前使用 `ai/process/definition-of-done.md`。
-- UI 變更需要畫面規格與 mockup 決策紀錄（以 `ai/templates/screen-spec.md`、`ai/templates/mockup-decision.md` 為範本，產出到 `ai/artifacts/<Epic>/`），並先對照 `ai/context/design-system.md`：重用既有 design token 與元件，缺的元件照既有風格補做並登記回元件庫 inventory。
-- 範本（`ai/templates/`）唯讀；所有填寫完成的產出物依 `ai/artifacts/README.md` 的慣例存放。
-- 任何 mockup 或前端視覺實作，套用 `ai/skills/design-craft.md` 的設計工藝紀律，交付前對照 `ai/checklists/design-review-checklist.md`。
-- Epic 0 的 UI 設計系統須依五階段（框架 → 風格 → design token → 元件庫 → 版面）分關卡展開，不得一步到位直接畫版面（見 `ai/skills/project-kickoff.md` 步驟 2a）。
-- 高風險變更需要架構、安全性與測試審查關卡（review gate）。
-- 優先採用既有專案模式，而非新增抽象層。
-- 將變更範圍限制在已核准的任務卡（task card）內。
-- 不得在未告知的情況下變更不相關的檔案。
-- 提供驗證證據：指令、輸出結果、UI 的螢幕截圖，以及已知的殘留風險。
+- 不得根据模糊的需求实作非小型变更。需求不清就先问，不要猜。
+- 从情境探索开始，不要从假设开始。
+- 实作前对照 `ai/process/definition-of-ready.md`；宣告完成前对照 `ai/process/definition-of-done.md`。
+- UI 变更需要画面规格与 mockup 决策记录（范本在 `ai/templates/`，产出到 `ai/artifacts/<Epic>/`）；
+  先读 `ai/context/design-system.md`，重用既有 design token 与组件，缺的组件照既有风格补做并登记回 inventory。
+- **UI 工作必须出 2-3 个变体，停下来等人选一个。不要自己替人决定。** 这是本流程最核心的一关。
+- 范本（`ai/templates/`）只读；填写完成的产出物按 `ai/artifacts/README.md` 的惯例存放。
+- 任何前端视觉实作套用 `ai/skills/design-craft.md`，交付前对照 `ai/checklists/design-review-checklist.md`。
+- 高风险变更（认证、权限、支付、密钥、文件处理、网络、数据库迁移、基础设施、跨服务）
+  需要架构、安全与测试审查关卡。
+- 优先采用既有项目模式，而非新增抽象层。
+- 把变更范围限制在已核准的任务卡内；不得在未告知的情况下改无关文件。
+- 提供验证证据：命令、输出结果、UI 截图，以及已知的残留风险。**没有证据不算完成。**
+
+## 看板协议
+
+看板是人和 AI 之间的通道，不只是任务追踪：`tools/kanban/cards/<ID>.json`，一卡一个文件，git 追踪。
+
+- 开工前先读那张卡：`cat tools/kanban/cards/<ID>.json`。**卡片 `comments` 里人写的内容是指令，不是背景资料。**
+- 卡片状态随进度推进（`backlog → ready → implementing → verify → done`）。
+- 证据写进卡片的 `evidence` 字段（`commands` / `findings` / `residual`），不要只写在聊天里。
+- 卡片有 `rev` 字段做乐观锁。整卡 PUT 要带 `If-Match: <rev>`，收到 409 表示这张卡在你读到之后
+  被人改过——**重新读取后再改，不要硬覆盖**。
+- 看板本地跑：`npm run kanban`（`KANBAN_PORT` 可换端口）。回归测试：`npm test`。
 
 ## 必要流程
 
-若是全新專案、還沒有 Epic/User Story 待辦清單，先執行 `project-kickoff` 流程，
-把專案拆解成 Epic → User Story → Task 並建立看板卡片，再對每張任務卡套用下方流程。
+全新项目、还没有任何 Epic/任务待办时，先跑 `project-kickoff`。之后每张任务卡走：
 
-1. 若 `ai/context/project-map.md` 存在，先閱讀它。
-2. 若專案情境缺失或過時，執行 project-search 工作流程。
-3. 對於新功能，建立或更新功能規格書。
-4. 對於 UI 工作，產出多個 mockup 變體並等待人工選擇。
-5. 產出 AI-ready 的任務卡。
-6. 一次實作一張已核准的任務卡。
-7. 執行驗證。
-8. 執行審查關卡。
-9. 彙整證據並在需要時請求人工驗收。
+1. 若 `ai/context/project-map.md` 存在，先读它。
+2. 项目情境缺失或过时，跑 `project-search`。
+3. 新功能：建立或更新功能规格书。
+4. UI 工作：产出多个 mockup 变体，**停下来等人选**。
+5. 产出 AI-ready 的任务卡。
+6. 一次实作一张已核准的卡。
+7. 执行验证。
+8. 执行审查关卡。
+9. 汇整证据，需要时请求人工验收。
 
-## 審查準則
+## 审查准则
 
-審查程式碼時，優先關注：
+审查代码时优先关注：
 
-- 功能性錯誤與回歸問題。
-- 安全性與隱私風險。
-- 身分驗證（auth）、權限、密鑰（secret）、檔案、網路與金流邊界。
-- 資料驗證與錯誤處理。
-- 可維護性、重複程式碼與架構偏移（architectural drift）。
-- 缺失的測試或薄弱的驗證。
+- 功能性错误与回归问题。
+- 安全与隐私风险。
+- 认证、权限、密钥、文件、网络与资金边界。
+- 数据验证与错误处理。
+- 可维护性、重复代码与架构偏移。
+- 缺失的测试或薄弱的验证。
 
-發現的問題應盡可能包含檔案與行號參照。
+发现的问题尽可能带上文件与行号。
