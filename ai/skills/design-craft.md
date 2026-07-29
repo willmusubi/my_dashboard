@@ -15,7 +15,7 @@
 2. **層次靠對比建立**：size、weight、color 三個工具擇一加強；次要資訊主動弱化（小字＋灰色＋細體）。反例：所有文字都同字級同字重同顏色。
 3. **留白起手就用過量**：card 內 padding 從 24px（`p-6`）起手，覺得太空再縮；不要從 8px 開始加。擠＝廉價，空＝精緻。
 4. **間距只用 4 的倍數**：`4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64`。7px、13px、19px 會讓畫面「說不出哪裡怪」。
-5. **字級從 type scale 取、字重活用**：字級只用 `11 / 12 / 13 / 14 / 16 / 18 / 20 / 24 / 30 / 36 / 48`；字重至少用到 400（body）／500（emphasis）／600（subheading）／700（heading、主按鈕）三種以上，不要全用 500。中文專案：字體 stack 必含 `'PingFang TC', 'Microsoft JhengHei'` fallback，HTML lang 設 `zh-Hant`；標題行高 1.2–1.3、內文 1.5–1.7；中文 letter-spacing 為 0。
+5. **字級從 type scale 取、字重活用**：字級只用 `11 / 12 / 13 / 14 / 16 / 18 / 20 / 24 / 30 / 36 / 48`；字重至少用到 400（body）／500（emphasis）／600（subheading）／700（heading、主按鈕）三種以上，不要全用 500。中文项目：字体 stack 必含对应语系的 fallback（简中 `'PingFang SC', 'Microsoft YaHei'`，繁中 `'PingFang TC', 'Microsoft JhengHei'`），HTML `lang` 与内容语言一致（本项目 `zh-CN`）；标题行高 1.2–1.3、内文 1.5–1.7；中文 letter-spacing 为 0。
 6. **色彩是 system，不是單一 hex**：grey scale（最重要）＋ primary scale ＋ semantic 色（success/warning/danger/info），每色 9-10 階。hover/active/disabled 用同色系不同階。**先用 grayscale 把整個版面排好，最後才上色**——灰階版層次對了，加色就是錦上添花。
 7. **邊框是新手最常見的視覺噪音**：區隔優先序＝ spacing → 背景色 → 陰影 → 最後才是邊框（表格列、input 這類需要硬邊界的才用）。
 8. **Depth 三選一**：浮起用 shadow、平面區塊用背景色、硬邊界用 border，**不要疊用**。陰影模擬上方光源：y-offset > x-offset、blur > y-offset。
@@ -57,7 +57,7 @@
 
 ## 常見急救修法（使用者抱怨醜時）
 
-- 字體 stack 沒中文 fallback → 加 PingFang TC／微軟正黑體；`lang="en"` 跑中文 → 改 `zh-Hant`。
+- 字体 stack 没中文 fallback → 加对应语系的（简中 PingFang SC／微软雅黑）；`lang` 与内容语言不符 → 改成对的（本项目 `zh-CN`）。
 - hex 散落各檔案 → 集中回 design token。
 - 字重全 500 → 主要 700、次要 500、提示 400。
 - 間距 7/13/19px → 改 8/12/16/20。

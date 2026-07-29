@@ -123,7 +123,7 @@
   .modal-overlay { position: fixed; inset: 0; background: rgba(20, 24, 31, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 5vh 20px; overflow-y: auto; z-index: 100; opacity: 0; transition: opacity .15s ease; }
   .modal-overlay.is-open { opacity: 1; }
   .modal-overlay[hidden] { display: none; }
-  .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 640px; box-shadow: var(--shadow-modal); transform: translateY(8px) scale(0.98); transition: transform .15s ease; }
+  .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 720px; box-shadow: var(--shadow-modal); transform: translateY(8px) scale(0.98); transition: transform .15s ease; }
   .modal-overlay.is-open .modal { transform: translateY(0) scale(1); }
   .modal-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 24px 0; gap: 12px; }
   .modal-id { font-size: 11.5px; color: var(--ink-faint); font-weight: 700; }
@@ -131,17 +131,28 @@
   .modal-title-input:hover, .modal-title-input:focus { background: var(--surface-sunken); }
   .modal-close { border: none; background: var(--surface-sunken); color: var(--ink-dim); width: 30px; height: 30px; border-radius: 8px; font-size: 15px; flex-shrink: 0; }
   .modal-close:hover { color: var(--ink); }
-  .modal-meta-static { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px 20px; padding: 14px 24px 0; }
-  .meta-item { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .meta-item-wide { grid-column: 1 / -1; }
-  .meta-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); }
-  .meta-value { font-size: 13px; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+  .rev-tag { font-weight: 400; color: var(--ink-faint); margin-left: 8px; }
+  .fld-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 16px; }
+  .fld { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .fld-wide { grid-column: 1 / -1; }
+  .fld-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); }
+  .fld-input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; background: var(--surface); color: var(--ink); font-family: inherit; }
+  .fld-input:focus { outline: 2px solid var(--accent-soft); outline-offset: 0; border-color: var(--accent); }
+  .fld-area { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; min-height: 62px; resize: vertical; font-family: var(--font-mono); background: var(--surface); color: var(--ink); }
+  .fld-inline { display: flex; align-items: center; min-height: 31px; }
+  .chk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 12px; }
+  .chk { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-dim); cursor: pointer; }
+  .chk input { width: 15px; height: 15px; accent-color: var(--accent); flex-shrink: 0; }
+  .chk input:checked + span { color: var(--ink); font-weight: 600; }
+  .tally { font-size: 11px; font-weight: 700; color: var(--ink-faint); background: var(--surface-sunken); border-radius: 999px; padding: 1px 7px; margin-left: 6px; letter-spacing: 0; text-transform: none; }
+  .tally-full { color: var(--good); background: var(--good-soft); }
+  .sect { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .sect > summary { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); cursor: pointer; }
+  .sect > summary:hover { color: var(--ink-dim); }
   .stage-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .modal-body { padding: 18px 24px 24px; display: flex; flex-direction: column; gap: 20px; }
   .modal-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 8px; display: block; }
   .content-input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; resize: vertical; min-height: 220px; }
-  .refs-list { display: flex; flex-wrap: wrap; gap: 6px; }
-  .refs-list span { font-size: 11.5px; background: var(--surface-sunken); border-radius: 6px; padding: 3px 8px; }
   .comment { display: flex; gap: 10px; margin-bottom: 12px; }
   .comment-avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .comment-name { font-size: 12.5px; font-weight: 700; }
@@ -218,7 +229,8 @@
 <script>
 (function () {
   "use strict";
-  var COMMENT_AUTHOR = ""; // 開頁時由 /api/config 帶入本機 git user.name
+  var COMMENT_AUTHOR = ""; // 开页时由 /api/config 带入本机 git user.name
+  var ID_PREFIX = "DASH";  // 同上，由 /api/config 带入，供 dependsOn 的提示文字用
 
   var STAGES = [
     { id: "backlog",       label: "Backlog 待辦",      color: "#5b6472" },
@@ -245,41 +257,106 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
-  function riskLabel(r) { return { low: "低風險", medium: "中風險", high: "高風險" }[r] || r; }
-  function trackLabel(t) { return { frontend: "前端", backend: "後端", integration: "前後端串接", "n/a": "" }[t] || ""; }
+  function riskLabel(r) { return { low: "低风险", medium: "中风险", high: "高风险" }[r] || r; }
+  function trackLabel(t) {
+    return { frontend: "前端", backend: "后端", integration: "前后端串接", fullstack: "全栈", "n/a": "" }[t] || "";
+  }
+
+  var RISKS = ["low", "medium", "high"];
+  var TRACKS = ["frontend", "backend", "integration", "fullstack", "n/a"];
+  var READINESS = [
+    ["problem_clear", "问题明确"], ["non_goals_clear", "非目标明确"],
+    ["acceptance_testable", "验收可测"], ["files_known", "相关文件已列出"],
+    ["scope_defined", "范围有界"], ["verification_contract", "验证方法已定"],
+    ["human_approval_recorded", "人工核准已记录"]
+  ];
+  var GATES = [
+    ["product", "产品"], ["ui", "UI"], ["architecture", "架构"],
+    ["security", "安全"], ["test", "测试"], ["code_review", "Code Review"]
+  ];
+  var LINKS = [
+    ["featureSpec", "功能规格书"], ["taskCard", "任务卡"], ["screenSpec", "画面规格"],
+    ["mockupDecision", "Mockup 决策"], ["verificationReport", "验证报告"], ["pr", "PR"]
+  ];
+
+  /* 支持 "readiness.problem_clear" 这种嵌套路径，让所有字段共用一套读写逻辑，
+     不用为每个字段各写一个 if 分支。 */
+  function getPath(o, p) {
+    return p.split(".").reduce(function (x, k) { return x == null ? undefined : x[k]; }, o);
+  }
+  function setPath(o, p, v) {
+    var ks = p.split("."), last = ks.pop();
+    var t = ks.reduce(function (x, k) { return x[k]; }, o);
+    t[last] = v;
+  }
 
   /* ── API ── */
   function api(path, options) {
     return fetch(path, options).then(function (res) {
-      if (!res.ok) return res.json().then(function (e) { throw new Error(e.error || res.statusText); });
+      if (!res.ok) {
+        return res.json().catch(function () { return {}; }).then(function (e) {
+          var err = new Error(e.error || res.statusText);
+          err.status = res.status;   // 409 要能被区分出来做重载，不能靠比对错误文案
+          throw err;
+        });
+      }
       return res.json();
     });
+  }
+  /** 服务端说这张卡在我们读到之后被改过（多半是 agent 写的）。硬覆盖会静默
+   *  丢掉那次改动，所以一律重新载入，让人看到最新状态后自己重做。 */
+  function onConflict(err) {
+    if (err && err.status === 409) {
+      showToast(err.message, true);
+      loadAll().then(function () { renderAll(); if (openId) openModal(openId); });
+      return true;
+    }
+    return false;
   }
   function loadAll() {
     return Promise.all([
       api("/api/cards").then(function (list) { TICKETS = list; }),
       api("/api/epics").then(function (data) { EPICS = data.epics || []; }),
-      api("/api/config").then(function (cfg) { COMMENT_AUTHOR = cfg.owner || "匿名"; })
+      api("/api/config").then(function (cfg) {
+        COMMENT_AUTHOR = cfg.owner || "匿名";
+        if (cfg.idPrefix) ID_PREFIX = cfg.idPrefix;
+      }),
+      // 解析失败的卡片档不会出现在 /api/cards 里（塞进去会被拖拽静默覆盖），
+      // 所以必须主动问一次，否则它们就是无声消失。
+      api("/api/issues").then(function (d) {
+        if (d.broken && d.broken.length) {
+          showToast("有 " + d.broken.length + " 个卡片档解析失败：" +
+            d.broken.map(function (b) { return b.file; }).join("、"), true);
+        }
+      }).catch(function () {})
     ]);
   }
   function saveOne(tk) {
     return api("/api/cards/" + encodeURIComponent(tk.id), {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(tk)
-    }).catch(function (err) { showToast("儲存失敗：" + err.message, true); throw err; });
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "If-Match": String(tk.rev) },
+      body: JSON.stringify(tk)
+    }).catch(function (err) {
+      if (!onConflict(err)) showToast("保存失败：" + err.message, true);
+      throw err;
+    });
   }
   function saveBulk(list) {
     return api("/api/cards", {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(list)
-    }).catch(function (err) { showToast("儲存失敗：" + err.message, true); throw err; });
+    }).catch(function (err) {
+      if (!onConflict(err)) showToast("保存失败：" + err.message, true);
+      throw err;
+    });
   }
   function createCard(input) {
     return api("/api/cards", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input)
-    }).catch(function (err) { showToast("新增失敗：" + err.message, true); throw err; });
+    }).catch(function (err) { showToast("新增失败：" + err.message, true); throw err; });
   }
   function deleteCard(id) {
     return api("/api/cards/" + encodeURIComponent(id), { method: "DELETE" })
-      .catch(function (err) { showToast("刪除失敗：" + err.message, true); throw err; });
+      .catch(function (err) { showToast("删除失败：" + err.message, true); throw err; });
   }
 
   /* ── render: lanes ── */
@@ -414,17 +491,52 @@
   }
 
   /* ── modal ── */
+  function stageLabel(id) { var s = STAGES[stageIndex(id)]; return s ? s.label : id; }
+
+  /* 所有可编辑控件都靠 data-field（值的路径）+ data-kind（怎么解析）驱动，
+     统一交给一个 handler 处理。上游是给每个字段各写一个 if 分支，只撑得住
+     两个字段——而真实数据显示 links/readiness/refs/gates/evidence 全都在用，
+     只是一直靠手改 JSON。 */
+  function fInput(label, path, value, o) {
+    o = o || {};
+    return '<label class="fld' + (o.wide ? " fld-wide" : "") + '"><span class="fld-label">' + label + "</span>" +
+      '<input class="fld-input" data-field="' + path + '" data-kind="' + (o.kind || "text") + '"' +
+      (o.list ? ' list="' + o.list + '"' : "") +
+      ' placeholder="' + escapeHtml(o.placeholder || "") + '"' +
+      ' value="' + escapeHtml(value == null ? "" : value) + '"></label>';
+  }
+  function fSelect(label, path, value, options, labelFn) {
+    var body = options.map(function (v) {
+      return '<option value="' + escapeHtml(v) + '"' + (v === value ? " selected" : "") + ">" +
+        escapeHtml(labelFn ? (labelFn(v) || v) : v) + "</option>";
+    }).join("");
+    return '<label class="fld"><span class="fld-label">' + label + "</span>" +
+      '<select class="fld-input" data-field="' + path + '" data-kind="text">' + body + "</select></label>";
+  }
+  function fCheck(label, path, value) {
+    return '<label class="chk"><input type="checkbox" data-field="' + path + '" data-kind="bool"' +
+      (value ? " checked" : "") + "><span>" + label + "</span></label>";
+  }
+  function fArea(label, path, value, kind, placeholder) {
+    return '<div class="fld fld-wide"><span class="fld-label">' + label + "</span>" +
+      '<textarea class="fld-area" data-field="' + path + '" data-kind="' + kind + '" placeholder="' +
+      escapeHtml(placeholder || "") + '">' + escapeHtml(value || "") + "</textarea></div>";
+  }
+  function tally(pairs, obj) {
+    var n = pairs.filter(function (p) { return obj[p[0]]; }).length;
+    return '<span class="tally' + (n === pairs.length ? " tally-full" : "") + '">' + n + " / " + pairs.length + "</span>";
+  }
+
   function openModal(id) {
     openId = id;
     var tk = getTicket(id);
     if (!tk) return;
-    var stage = STAGES[stageIndex(tk.stage)];
 
-    var dependsOnText = (tk.dependsOn && tk.dependsOn.length) ? tk.dependsOn.join("、") : "無";
-
-    var refs = tk.refs.length
-      ? '<div class="refs-list">' + tk.refs.map(function (r) { return "<span class=\"mono\">" + escapeHtml(r) + "</span>"; }).join("") + "</div>"
-      : '<p class="no-comment">尚無關聯檔案。</p>';
+    var epicOpts = EPICS.map(function (e) { return '<option value="' + escapeHtml(e.name) + '">'; }).join("");
+    var storyOpts = [];
+    EPICS.forEach(function (e) {
+      (e.stories || []).forEach(function (s) { storyOpts.push('<option value="' + escapeHtml(s.name) + '">'); });
+    });
 
     var commentsHtml = tk.comments.length
       ? tk.comments.map(function (c) {
@@ -432,30 +544,61 @@
           return '<div class="comment"><div class="comment-avatar">' + initial + '</div><div><span class="comment-name">' + escapeHtml(c.name) +
             '</span><span class="comment-time">' + escapeHtml(c.time) + '</span><div class="comment-text">' + escapeHtml(c.text) + "</div></div></div>";
         }).join("")
-      : '<p class="no-comment">尚無留言。</p>';
+      : '<p class="no-comment">尚无留言。</p>';
 
     document.getElementById("modal").innerHTML =
-      '<div class="modal-head"><div style="flex:1;"><div class="modal-id mono">' + tk.id + '</div>' +
-      '<input class="modal-title-input" id="field-title" value="' + escapeHtml(tk.title) + '"></div>' +
+      '<div class="modal-head"><div style="flex:1;"><div class="modal-id mono">' + tk.id +
+      '<span class="rev-tag">rev ' + tk.rev + "</span></div>" +
+      '<input class="modal-title-input" data-field="title" data-kind="text-required" value="' + escapeHtml(tk.title) + '"></div>' +
       '<button type="button" class="modal-close" id="modal-close-btn">✕</button></div>' +
-      '<div class="modal-meta-static">' +
-      '<div class="meta-item"><span class="meta-label">階段</span><span class="meta-value"><span class="stage-dot" style="background:' + stage.color + '"></span>' + stage.label + "</span></div>" +
-      '<div class="meta-item"><span class="meta-label">風險</span><span class="meta-value">' + riskLabel(tk.risk) + "</span></div>" +
-      '<div class="meta-item"><span class="meta-label">分軌</span><span class="meta-value">' + (tk.track && tk.track !== "n/a" ? trackLabel(tk.track) : "不適用") + "</span></div>" +
-      '<div class="meta-item"><span class="meta-label">Owner</span><span class="meta-value">' + (escapeHtml(tk.owner) || "—") + "</span></div>" +
-      '<div class="meta-item"><span class="meta-label">Agent</span><span class="meta-value">' + (escapeHtml(tk.agent) || "—") + "</span></div>" +
-      '<div class="meta-item"><span class="meta-label">需人工核准</span><span class="meta-value">' + (tk.approvalRequired ? "是" : "否") + "</span></div>" +
-      '<div class="meta-item"><span class="meta-label">Epic</span><span class="meta-value">' + (escapeHtml(tk.epic) || "（未分類）") + "</span></div>" +
-      '<div class="meta-item"><span class="meta-label">User Story</span><span class="meta-value">' + (escapeHtml(tk.userStory) || "（未分類）") + "</span></div>" +
-      '<div class="meta-item meta-item-wide"><span class="meta-label">前置任務（dependsOn）</span><span class="meta-value">' + escapeHtml(dependsOnText) + "</span></div>" +
-      "</div>" +
+
+      '<datalist id="dl-epics">' + epicOpts + "</datalist>" +
+      '<datalist id="dl-stories">' + storyOpts.join("") + "</datalist>" +
+
       '<div class="modal-body">' +
-      '<div><span class="modal-section-label">描述</span><textarea class="content-input" id="field-content" placeholder="補充說明…">' + escapeHtml(tk.content) + "</textarea></div>" +
-      '<div><span class="modal-section-label">相關檔案</span>' + refs + "</div>" +
-      '<div><span class="modal-section-label">留言</span>' + commentsHtml +
-      '<div class="comment-form"><textarea id="new-comment" placeholder="留個言…"></textarea><button type="button" id="add-comment">送出</button></div></div>' +
+      '<div class="fld-grid">' +
+        fSelect("阶段", "stage", tk.stage, STAGES.map(function (s) { return s.id; }), stageLabel) +
+        fSelect("风险", "risk", tk.risk, RISKS, riskLabel) +
+        fSelect("分轨", "track", tk.track, TRACKS, function (t) { return trackLabel(t) || "不适用"; }) +
+        fInput("Owner", "owner", tk.owner) +
+        fInput("Agent", "agent", tk.agent, { placeholder: "claude-code" }) +
+        '<div class="fld"><span class="fld-label">需人工核准</span><div class="fld-inline">' +
+          fCheck("是", "approvalRequired", tk.approvalRequired) + "</div></div>" +
+        fInput("Epic", "epic", tk.epic, { list: "dl-epics" }) +
+        fInput("User Story", "userStory", tk.userStory, { list: "dl-stories" }) +
+        fInput("前置任务 dependsOn", "dependsOn", (tk.dependsOn || []).join(", "),
+          { wide: true, kind: "csv", placeholder: "留空表示无。例：" + ID_PREFIX + "-001, " + ID_PREFIX + "-002" }) +
       "</div>" +
-      '<div class="modal-footer"><button type="button" class="danger-btn" id="delete-card">刪除卡片</button><span></span></div>';
+
+      '<div><span class="modal-section-label">描述</span>' +
+      '<textarea class="content-input" data-field="content" data-kind="text" placeholder="目标 / 非目标 / 验收标准 / 允许改的文件 / 验证命令…">' +
+      escapeHtml(tk.content) + "</textarea></div>" +
+
+      '<div><span class="modal-section-label">就绪 Readiness ' + tally(READINESS, tk.readiness) + "</span>" +
+      '<div class="chk-grid">' + READINESS.map(function (p) {
+        return fCheck(p[1], "readiness." + p[0], tk.readiness[p[0]]);
+      }).join("") + "</div></div>" +
+
+      '<div><span class="modal-section-label">审查关卡 Gates ' + tally(GATES, tk.gates) + "</span>" +
+      '<div class="chk-grid">' + GATES.map(function (p) {
+        return fCheck(p[1], "gates." + p[0], tk.gates[p[0]]);
+      }).join("") + "</div></div>" +
+
+      '<div><span class="modal-section-label">关联文档</span><div class="fld-grid">' +
+      LINKS.map(function (p) { return fInput(p[1], "links." + p[0], tk.links[p[0]]); }).join("") +
+      "</div></div>" +
+
+      '<details class="sect"><summary>相关文件与证据</summary>' +
+      fArea("相关文件 refs（一行一个路径）", "refs", (tk.refs || []).join("\n"), "lines", "src/foo.ts") +
+      fArea("验证命令（一行一条）", "evidence.commands", (tk.evidence.commands || []).join("\n"), "lines", "npm test") +
+      fArea("验证发现（一行一条）", "evidence.findings", (tk.evidence.findings || []).join("\n"), "lines", "12 passed") +
+      fArea("残留风险", "evidence.residual", tk.evidence.residual, "text", "还没覆盖到的部分…") +
+      "</details>" +
+
+      '<div><span class="modal-section-label">留言</span>' + commentsHtml +
+      '<div class="comment-form"><textarea id="new-comment" placeholder="留个言…"></textarea><button type="button" id="add-comment">送出</button></div></div>' +
+      "</div>" +
+      '<div class="modal-footer"><button type="button" class="danger-btn" id="delete-card">删除卡片</button><span></span></div>';
 
     var overlay = document.getElementById("modal-overlay");
     overlay.hidden = false;
@@ -466,10 +609,6 @@
     var overlay = document.getElementById("modal-overlay");
     overlay.classList.remove("is-open");
     setTimeout(function () { overlay.hidden = true; openId = null; }, 150);
-  }
-
-  function persistField(tk) {
-    saveOne(tk).then(function () { renderAll(); });
   }
 
   function showToast(msg, isError) {
@@ -512,7 +651,16 @@
       });
     });
     if (changed.length) {
-      saveBulk(changed).catch(function () { loadAll().then(renderAll); });
+      saveBulk(changed).then(function (resp) {
+        // 必须用服务端回传的版本更新本地 rev，否则下一次拖拽会带着旧 rev 撞 409
+        (resp.cards || []).forEach(function (saved) {
+          var tk = getTicket(saved.id);
+          if (tk) Object.keys(saved).forEach(function (k) { tk[k] = saved[k]; });
+        });
+      }).catch(function (err) {
+        if (err && err.status === 409) return;   // onConflict 已经重载过了
+        loadAll().then(renderAll);
+      });
     }
   }
 
@@ -601,7 +749,10 @@
       var pad = function (n) { return String(n).padStart(2, "0"); };
       var time = pad(now.getMonth() + 1) + "-" + pad(now.getDate()) + " " + pad(now.getHours()) + ":" + pad(now.getMinutes());
       tk4.comments.push({ name: COMMENT_AUTHOR, time: time, text: text });
-      saveOne(tk4).then(function () { openModal(openId); });
+      saveOne(tk4).then(function (saved) {
+        Object.keys(saved).forEach(function (k) { tk4[k] = saved[k]; });
+        reopenModal(openId);
+      }).catch(function () {});
       return;
     }
 
@@ -617,14 +768,75 @@
     }
   });
 
-  document.addEventListener("blur", function (e) {
-    if (!openId) return;
-    var tk = getTicket(openId);
-    if (e.target.id === "field-title" && e.target.value.trim() && e.target.value !== tk.title) {
-      tk.title = e.target.value.trim(); persistField(tk);
-    } else if (e.target.id === "field-content" && e.target.value !== tk.content) {
-      tk.content = e.target.value; persistField(tk);
+  /* ── 统一的字段保存 ──
+     上游是给每个字段各写一个 if 分支，所以只撑得住 title 和 content 两个。
+     这里改成 data-field（值的路径）+ data-kind（怎么解析）驱动，加字段不用改
+     这段逻辑。change 管 checkbox/select（立刻生效），blur 管文本框（避免每敲
+     一个字就写一次盘）。两者都跑过去也无妨——值没变就直接返回。 */
+  function parseFieldValue(el) {
+    var kind = el.dataset.kind;
+    if (kind === "bool") return el.checked;
+    if (kind === "lines" || kind === "csv") {
+      return el.value.split(kind === "lines" ? "\n" : /[,，、\s]+/)
+        .map(function (s) { return s.trim(); }).filter(Boolean);
     }
+    return el.value;
+  }
+
+  /** 重开 modal 但保住滚动位置和折叠区展开状态，否则改一个勾就跳回顶部。
+   *  滚动的是 .modal-overlay（它才有 overflow-y: auto），不是 .modal-body。 */
+  function reopenModal(id) {
+    var overlay = document.getElementById("modal-overlay");
+    var scroll = overlay ? overlay.scrollTop : 0;
+    var det = document.querySelector("#modal details.sect");
+    var wasOpen = !!(det && det.open);
+    openModal(id);
+    var nd = document.querySelector("#modal details.sect");
+    if (nd) nd.open = wasOpen;
+    if (overlay) overlay.scrollTop = scroll;
+  }
+
+  function applyField(el) {
+    if (!openId || !el.dataset || !el.dataset.field) return;
+    var tk = getTicket(openId);
+    if (!tk) return;
+    var path = el.dataset.field;
+    var next = parseFieldValue(el);
+
+    if (el.dataset.kind === "text-required") {
+      next = String(next).trim();
+      if (!next) { el.value = getPath(tk, path); showToast("标题不能为空", true); return; }
+    } else if (el.dataset.kind === "text" && path !== "content" && path !== "evidence.residual") {
+      next = String(next).trim();
+    }
+    if (JSON.stringify(getPath(tk, path)) === JSON.stringify(next)) return;
+
+    var before = JSON.parse(JSON.stringify(tk));   // 服务端拒绝时回滚，避免界面和磁盘不一致
+    setPath(tk, path, next);
+    // 换车道时把 order 排到目标车道末尾，别和既有卡撞号
+    if (path === "stage") {
+      tk.order = ticketsByStage(next).reduce(function (m, c) {
+        return c.id === tk.id ? m : Math.max(m, c.order);
+      }, 0) + 1;
+    }
+
+    saveOne(tk).then(function (saved) {
+      Object.keys(saved).forEach(function (k) { tk[k] = saved[k]; });
+      renderAll();
+      if (openId === tk.id) reopenModal(tk.id);
+    }).catch(function (err) {
+      if (err && err.status === 409) return;   // onConflict 已经重载过了
+      Object.keys(tk).forEach(function (k) { delete tk[k]; });
+      Object.keys(before).forEach(function (k) { tk[k] = before[k]; });
+      renderAll();
+      if (openId === tk.id) reopenModal(tk.id);
+    });
+  }
+
+  document.addEventListener("change", function (e) { applyField(e.target); });
+  document.addEventListener("blur", function (e) {
+    if (e.target.type === "checkbox") return;   // checkbox 交给 change
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") applyField(e.target);
   }, true);
 
   document.addEventListener("keydown", function (e) {

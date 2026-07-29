@@ -4,6 +4,8 @@
   "description": "个人 AI 协作治理看板：让 agent 不在需求模糊时动手，且没有证据不算完成。fork 自 Monstrare。",
   "license": "MIT",
   "scripts": {
-    "kanban": "node tools/kanban/server.mjs"
+    "kanban": "node tools/kanban/server.mjs",
+    "test": "bash tools/kanban/test.sh",
+    "check": "bash scripts/check-governance.sh"
   }
 }

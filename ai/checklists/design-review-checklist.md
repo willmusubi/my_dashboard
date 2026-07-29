@@ -4,8 +4,8 @@ UI 變更交付前、mockup 關卡審查時，或使用者抱怨「醜」時逐�
 
 ## 一、字體與文字
 
-- [ ] HTML lang 設成 `zh-Hant`（繁中）或對應語系，不是 `en` 跑中文。
-- [ ] 字體 stack 含中文 fallback：`'PingFang TC', 'Microsoft JhengHei', '微軟正黑體'`。
+- [ ] HTML `lang` 与内容语言一致（本项目：`zh-CN`），不是 `en` 跑中文。
+- [ ] 字体 stack 含对应语系的中文 fallback。简中：`'PingFang SC', 'Microsoft YaHei', '微软雅黑'`；繁中：`'PingFang TC', 'Microsoft JhengHei'`。
 - [ ] 字級全部來自 type scale（`11 / 12 / 13 / 14 / 16 / 18 / 20 / 24 / 30 / 36 / 48`），沒有 15px、17px、19px 這種奇怪字級。
 - [ ] 字重至少用到 3 種（400 / 500 / 700），不是全 500。
 - [ ] 行高：標題 1.2–1.3、內文 1.5–1.7；中文 letter-spacing 為 0 或 < 0.02em。

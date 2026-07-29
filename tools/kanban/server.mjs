@@ -17,6 +17,9 @@ const ROOT = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathna
 const CARDS_DIR = path.join(ROOT, 'cards');
 const INDEX_HTML = path.join(ROOT, 'index.html');
 const EPICS_JSON = path.join(ROOT, 'epics.json');
+// 「曾经发出过的最大编号」。git 追踪，跨机器有效。没有它的话，删掉编号最大的
+// 卡再建新卡会拿到同一个 id，别人的 dependsOn 就静默指向了一张无关的新卡。
+const SEQ_FILE = path.join(CARDS_DIR, '.seq');
 
 fs.mkdirSync(CARDS_DIR, { recursive: true });
 
@@ -37,7 +40,9 @@ const ID_RE = new RegExp('^' + ID_PREFIX + '-\\d{3,}$');
 const STAGES = ['backlog', 'blocked', 'ready', 'implementing', 'verify', 'done'];
 const ADVANCED_STAGES = ['ready', 'implementing', 'verify', 'done'];
 const RISKS = ['low', 'medium', 'high'];
-const TRACKS = ['frontend', 'backend', 'integration', 'n/a'];
+// 'fullstack' 是上游漏掉的合理值。枚举缺值的代价很高：非法值会让 handlePutBulk
+// 整批拒绝，于是一张坏卡就能让整条车道拖不动（见 readAllCards 的坏卡处理）。
+const TRACKS = ['frontend', 'backend', 'integration', 'fullstack', 'n/a'];
 const READINESS_KEYS = [
   'problem_clear', 'non_goals_clear', 'acceptance_testable', 'files_known',
   'scope_defined', 'verification_contract', 'human_approval_recorded'
@@ -47,10 +52,30 @@ const LINK_KEYS = ['featureSpec', 'screenSpec', 'mockupDecision', 'taskCard', 'v
 
 /* ── helpers ── */
 
-function sendJson(res, code, obj) {
+function sendJson(res, code, obj, extraHeaders) {
   const body = JSON.stringify(obj);
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+  const headers = { 'Content-Type': 'application/json; charset=utf-8' };
+  if (extraHeaders) Object.assign(headers, extraHeaders);
+  res.writeHead(code, headers);
   res.end(body);
+}
+
+/**
+ * 乐观锁。If-Match 带的是客户端手上那份的 rev；对不上，说明它读到之后有人
+ * （多半是 agent）改过这张卡，直接覆盖就会静默丢掉那次改动。
+ * 不带 If-Match 的请求放行，保持对旧客户端与手写 curl 的兼容。
+ */
+function checkPrecondition(req, current) {
+  const raw = req.headers['if-match'];
+  if (raw === undefined) return null;
+  const want = parseInt(String(raw).replace(/"/g, ''), 10);
+  if (want === current.rev) return null;
+  return {
+    error: current.id + ' 已被改动（你手上是 rev ' + want + '，磁盘上是 rev ' +
+      current.rev + '）。请重新载入后重做这次修改。',
+    conflict: true,
+    rev: current.rev
+  };
 }
 
 function readBody(req) {
@@ -77,6 +102,8 @@ function validateCard(c) {
   if (typeof c.agent !== 'string') return 'agent 必須是字串';
   if (typeof c.approvalRequired !== 'boolean') return 'approvalRequired 必須是 boolean';
   if (typeof c.createdAt !== 'string') return 'createdAt 必須是字串';
+  if (!Number.isInteger(c.rev) || c.rev < 1) return 'rev 必須是 >= 1 的整數';
+  if (typeof c.updatedAt !== 'string') return 'updatedAt 必須是字串';
   if (!Number.isInteger(c.order) || c.order < 1) return 'order 必須是 >= 1 的整數';
   if (typeof c.epic !== 'string') return 'epic 必須是字串';
   if (typeof c.userStory !== 'string') return 'userStory 必須是字串';
@@ -144,6 +171,11 @@ function fillDefaults(c) {
   if (!Array.isArray(c.refs)) c.refs = [];
   if (!isPlainObject(c.evidence)) c.evidence = { commands: [], findings: [], residual: '' };
   if (!Array.isArray(c.comments)) c.comments = [];
+  if (!Number.isInteger(c.rev) || c.rev < 1) c.rev = 1;
+  if (typeof c.updatedAt !== 'string') {
+    const base = new Date((c.createdAt || todayStr()) + 'T00:00:00');
+    c.updatedAt = isoNow(Number.isNaN(base.getTime()) ? new Date() : base);
+  }
   return c;
 }
 
@@ -159,6 +191,8 @@ function writeCard(c) {
     agent: c.agent,
     approvalRequired: c.approvalRequired,
     createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+    rev: c.rev,
     epic: c.epic,
     userStory: c.userStory,
     track: c.track,
@@ -175,11 +209,30 @@ function writeCard(c) {
   fs.writeFileSync(file, JSON.stringify(normalized, null, 2) + '\n', 'utf8');
 }
 
+/**
+ * 解析失败的卡片档，供 GET /api/issues 用。
+ * 刻意「跳过」而不是「合成一张卡塞进列表」：合成卡一旦被拖拽写回，原始坏档
+ * 的内容就被静默覆盖掉了；而且它会混进 handlePutBulk 的批次里造成整批拒绝。
+ * 跳过 + 单独上报，才既救回其余卡片、又不损坏坏档本身。
+ */
+let BROKEN_FILES = [];
+
 function readAllCards() {
   const files = fs.readdirSync(CARDS_DIR).filter((f) => f.endsWith('.json'));
-  const cards = files.map((f) =>
-    fillDefaults(JSON.parse(fs.readFileSync(path.join(CARDS_DIR, f), 'utf8')))
-  );
+  const cards = [];
+  const broken = [];
+  for (const f of files) {
+    try {
+      cards.push(fillDefaults(JSON.parse(fs.readFileSync(path.join(CARDS_DIR, f), 'utf8'))));
+    } catch (err) {
+      // 上游这里没有 try/catch：一个坏档会让 SyntaxError 一路冒到顶层 handler，
+      // 被误报成「body 不是合法 JSON」——对一个根本没有 body 的 GET 请求，
+      // 而且整块看板会变空。
+      console.error('[kanban] 解析失败：' + f + ' — ' + err.message);
+      broken.push({ file: f, error: err.message });
+    }
+  }
+  BROKEN_FILES = broken;
   cards.sort((a, b) =>
     STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage) ||
     a.order - b.order ||
@@ -244,6 +297,40 @@ function todayStr() {
   return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
 
+/** ISO 8601 含时区偏移。原本的 "07-03 13:58" 没有年份也没有时区，无法比较先后。 */
+function isoNow(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+    p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) +
+    sign + p(Math.floor(Math.abs(off) / 60)) + ':' + p(Math.abs(off) % 60);
+}
+
+/** 每次写入递增，配合 If-Match 做乐观锁，防止「浏览器开着一小时后拖一下，
+ *  把 agent 期间的改动整个还原掉」这种静默数据丢失。 */
+function bumpRev(c) {
+  c.rev = (Number.isInteger(c.rev) ? c.rev : 0) + 1;
+  c.updatedAt = isoNow();
+  return c;
+}
+
+function readSeq() {
+  try {
+    return parseInt(fs.readFileSync(SEQ_FILE, 'utf8').trim(), 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeSeq(n) {
+  try {
+    fs.writeFileSync(SEQ_FILE, String(n) + '\n', 'utf8');
+  } catch (err) {
+    console.error('[kanban] 写入 .seq 失败：' + err.message);
+  }
+}
+
 /* ── route handlers ── */
 
 function handleList(res) {
@@ -259,42 +346,83 @@ function handleEpics(res) {
   }
 }
 
-function handlePutOne(res, id, body) {
-  const c = fillDefaults(JSON.parse(body));
-  if (!isPlainObject(c)) return sendJson(res, 400, { error: 'body 必須是完整 card object' });
-  if (c.id !== id) return sendJson(res, 400, { error: 'body 的 id 與 URL 不一致' });
+function handlePutOne(req, res, id, body) {
+  const incoming = JSON.parse(body);
+  if (!isPlainObject(incoming)) return sendJson(res, 400, { error: 'body 必須是完整 card object' });
+  if (incoming.id !== id) return sendJson(res, 400, { error: 'body 的 id 與 URL 不一致' });
+
+  const cardMap = new Map(readAllCards().map((x) => [x.id, x]));
+  const current = cardMap.get(id);
+  if (!current) return sendJson(res, 404, { error: id + ' 不存在' });
+
+  const conflict = checkPrecondition(req, current);
+  if (conflict) return sendJson(res, 409, conflict);
+
+  // rev 与 createdAt 一律以磁盘版本为准，客户端说了不算。
+  const c = fillDefaults({ ...incoming, rev: current.rev, createdAt: current.createdAt });
   const err = validateCard(c);
   if (err) return sendJson(res, 400, { error: err });
-  const cardMap = new Map(readAllCards().map((x) => [x.id, x]));
   cardMap.set(c.id, c);
   const depErr = checkDependsOn(c, cardMap);
   if (depErr) return sendJson(res, 400, { error: depErr });
+  bumpRev(c);
   writeCard(c);
-  sendJson(res, 200, c);
+  sendJson(res, 200, c, { ETag: String(c.rev) });
 }
 
 function handlePutBulk(res, body) {
   const list = JSON.parse(body);
   if (!Array.isArray(list)) return sendJson(res, 400, { error: 'body 必須是 card 陣列' });
-  for (const c of list) {
-    const err = validateCard(fillDefaults(c));
-    if (err) return sendJson(res, 400, { error: (c && c.id ? c.id + ': ' : '') + err });
-  }
   const cardMap = new Map(readAllCards().map((x) => [x.id, x]));
-  for (const c of list) cardMap.set(c.id, c);
+
+  // 先比对 rev，且必须在 fillDefaults 之前——fillDefaults 会给缺 rev 的卡补
+  // rev=1，之后就分不清「客户端没带 rev」和「客户端带的是 1」。
+  // 拖拽送来的是浏览器内存里那份；开着页面一小时再拖一下，就会把 agent 期间
+  // 的改动整个还原掉，而且无声无息。
+  const stale = [];
   for (const c of list) {
+    const cur = isPlainObject(c) ? cardMap.get(c.id) : null;
+    if (cur && Number.isInteger(c.rev) && c.rev !== cur.rev) stale.push(c.id);
+  }
+  if (stale.length) {
+    return sendJson(res, 409, {
+      error: '这些卡片已被改动：' + stale.join('、') + '。请重新载入后重做这次拖拽。',
+      conflict: true,
+      stale
+    });
+  }
+
+  const prepared = [];
+  for (const c of list) {
+    const cur = isPlainObject(c) ? cardMap.get(c.id) : null;
+    const merged = fillDefaults(cur ? { ...c, rev: cur.rev, createdAt: cur.createdAt } : c);
+    const err = validateCard(merged);
+    if (err) return sendJson(res, 400, { error: (c && c.id ? c.id + ': ' : '') + err });
+    prepared.push(merged);
+  }
+  for (const c of prepared) cardMap.set(c.id, c);
+  for (const c of prepared) {
     const depErr = checkDependsOn(c, cardMap);
     if (depErr) return sendJson(res, 400, { error: depErr });
   }
-  for (const c of list) writeCard(c);
-  sendJson(res, 200, { updated: list.length });
+  for (const c of prepared) {
+    bumpRev(c);
+    writeCard(c);
+  }
+  sendJson(res, 200, { updated: prepared.length, cards: prepared });
 }
 
 function handlePost(res, body) {
   const input = JSON.parse(body);
   if (!isPlainObject(input)) return sendJson(res, 400, { error: 'body 必須是 object' });
   const existing = readAllCards();
-  const maxNum = existing.reduce((m, c) => Math.max(m, parseInt(c.id.slice(ID_PREFIX.length + 1), 10)), 0);
+  // 取「磁盘上现存最大」与「曾经发出过的最大」的较大者。只看磁盘的话，删掉
+  // 编号最大的卡再建新卡会复用同一个 id，其他卡的 dependsOn 就静默指向了
+  // 一张毫不相干的新卡。
+  const maxNum = Math.max(
+    existing.reduce((m, c) => Math.max(m, parseInt(c.id.slice(ID_PREFIX.length + 1), 10) || 0), 0),
+    readSeq()
+  );
   const stage = STAGES.includes(input.stage) ? input.stage : 'backlog';
   const inColumn = existing.filter((c) => c.stage === stage);
   const card = fillDefaults({
@@ -311,7 +439,9 @@ function handlePost(res, body) {
     userStory: typeof input.userStory === 'string' ? input.userStory : '',
     track: TRACKS.includes(input.track) ? input.track : 'n/a',
     dependsOn: Array.isArray(input.dependsOn) ? input.dependsOn : [],
-    order: inColumn.length + 1,
+    // 不能用 inColumn.length + 1：删掉车道中间的卡后会撞号，排序退化到
+    // id.localeCompare，顺序变随机且每次拖拽都重写文件制造 git 噪音。
+    order: inColumn.reduce((m, c) => Math.max(m, c.order || 0), 0) + 1,
     readiness: input.readiness,
     gates: input.gates,
     links: input.links,
@@ -326,14 +456,28 @@ function handlePost(res, body) {
   const depErr = checkDependsOn(card, cardMap);
   if (depErr) return sendJson(res, 400, { error: depErr });
   writeCard(card);
-  sendJson(res, 201, card);
+  writeSeq(maxNum + 1);
+  sendJson(res, 201, card, { ETag: String(card.rev) });
 }
 
 function handleDelete(res, id) {
   const file = path.join(CARDS_DIR, id + '.json');
   if (!fs.existsSync(file)) return sendJson(res, 404, { error: id + ' 不存在' });
   fs.unlinkSync(file);
-  sendJson(res, 200, { deleted: id });
+
+  // 清掉其他卡对它的 dependsOn 引用。上游不做这件事，后果是连锁的：
+  // checkDependsOn 硬拒任何引用不存在卡片的 PUT，modal 又没有 dependsOn
+  // 编辑器，而拖拽走的是整批拒绝的 handlePutBulk —— 净效果是一个悬空引用
+  // 让两条车道彻底拖不动，只能手改 JSON 才能救回来。
+  const cleaned = [];
+  for (const c of readAllCards()) {
+    if (!c.dependsOn.includes(id)) continue;
+    c.dependsOn = c.dependsOn.filter((d) => d !== id);
+    bumpRev(c);
+    writeCard(c);
+    cleaned.push(c.id);
+  }
+  sendJson(res, 200, { deleted: id, dependsOnCleaned: cleaned });
 }
 
 /* ── server ── */
@@ -348,12 +492,22 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/config') {
-      if (req.method === 'GET') return sendJson(res, 200, { owner: DEFAULT_OWNER });
+      if (req.method === 'GET') return sendJson(res, 200, { owner: DEFAULT_OWNER, idPrefix: ID_PREFIX });
       return sendJson(res, 405, { error: 'method not allowed' });
     }
 
     if (pathname === '/api/epics') {
       if (req.method === 'GET') return handleEpics(res);
+      return sendJson(res, 405, { error: 'method not allowed' });
+    }
+
+    // 解析失败的卡片档。这些档被刻意排除在 /api/cards 之外（塞进去会被拖拽
+    // 静默覆盖掉），所以要有一个地方能看见它们，否则就变成无声消失。
+    if (pathname === '/api/issues') {
+      if (req.method === 'GET') {
+        readAllCards();
+        return sendJson(res, 200, { broken: BROKEN_FILES });
+      }
       return sendJson(res, 405, { error: 'method not allowed' });
     }
 
@@ -368,14 +522,16 @@ const server = http.createServer(async (req, res) => {
     if (match) {
       const id = decodeURIComponent(match[1]);
       if (!ID_RE.test(id)) return sendJson(res, 400, { error: 'id 必須符合 ^' + ID_PREFIX + '-\\d{3,}$' });
-      if (req.method === 'PUT') return handlePutOne(res, id, await readBody(req));
+      if (req.method === 'PUT') return handlePutOne(req, res, id, await readBody(req));
       if (req.method === 'DELETE') return handleDelete(res, id);
       return sendJson(res, 405, { error: 'method not allowed' });
     }
 
     sendJson(res, 404, { error: 'not found' });
   } catch (err) {
-    if (err instanceof SyntaxError) {
+    // 只有「有 body 的请求」才可能是 body 不合法。GET 走到这里必然是别的原因
+    // （例如读档失败），不能挂在 body 头上。
+    if (err instanceof SyntaxError && req.method !== 'GET') {
       sendJson(res, 400, { error: 'body 不是合法 JSON：' + err.message });
     } else {
       sendJson(res, 500, { error: '寫入失敗：' + err.message });
