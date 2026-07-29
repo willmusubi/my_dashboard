@@ -10,7 +10,8 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 
 const HOST = '127.0.0.1';
-const PORT = 4420;
+// 可用 KANBAN_PORT 覆写：平行专案很多时，同时开两块看板不会撞埠。
+const PORT = Number(process.env.KANBAN_PORT) || 4420;
 
 const ROOT = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
 const CARDS_DIR = path.join(ROOT, 'cards');
@@ -21,7 +22,7 @@ fs.mkdirSync(CARDS_DIR, { recursive: true });
 
 // Customize this per project (e.g. team or product initials). Card IDs are
 // generated as `${ID_PREFIX}-001`, `${ID_PREFIX}-002`, ...
-const ID_PREFIX = 'TASK';
+const ID_PREFIX = 'DASH';
 
 // 新卡片 owner 與看板留言作者的預設值：取本機 git 身分（這個看板本來就以
 // git 為同步機制），沒有 git 或沒設 user.name 時留空字串（未指派）。

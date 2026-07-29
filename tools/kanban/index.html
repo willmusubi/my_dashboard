@@ -1,4 +1,10 @@
-<title>專案管理平台</title>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>治理看板</title>
 <style>
   :root {
     --paper: #f5f6f8;
@@ -22,7 +28,7 @@
     --shadow-card: 0 1px 2px rgba(20, 24, 31, 0.06), 0 1px 1px rgba(20, 24, 31, 0.04);
     --shadow-card-hover: 0 6px 20px rgba(20, 24, 31, 0.12);
     --shadow-modal: 0 24px 64px rgba(20, 24, 31, 0.28);
-    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "PingFang TC", "Microsoft YaHei", "Microsoft JhengHei", sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   }
 
@@ -179,12 +185,14 @@
   #toast.is-shown { opacity: 1; transform: translateX(-50%) translateY(0); }
   #toast.is-error { background: var(--crit); }
 </style>
+</head>
+<body>
 
 <div class="topbar">
   <div class="topbar-row1">
     <div class="brand">
-      <span class="brand-name">專案管理平台</span>
-      <span class="brand-sub">ai/process/kanban.md 的視覺化 — Variant A · 控制塔</span>
+      <span class="brand-name">治理看板</span>
+      <span class="brand-sub">人 ↔ AI 的决策通道</span>
     </div>
     <div class="view-tabs" role="tablist">
       <button type="button" class="is-active" data-view="board" role="tab">看板</button>
@@ -626,3 +634,5 @@
   loadAll().then(renderAll).catch(function (err) { showToast("讀取失敗：" + err.message, true); });
 })();
 </script>
+</body>
+</html>

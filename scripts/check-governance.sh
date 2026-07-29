@@ -38,9 +38,9 @@ for file in "${required_files[@]}"; do
   fi
 done
 
-# ai/skills/ is the canonical content for every .claude/skills and .codex/skills
-# thin stub. If a skill exists on one side but not the other (or not in the
-# canonical source), a stub will point at a file that does not exist.
+# ai/skills/ 是每个 .claude/skills 薄 stub 的正本内容。若某个 skill 只存在于
+# 一边，stub 就会指向一个不存在的文件。
+# 注：上游还检查 .codex/skills，本 fork 已删除 Codex 支持，故不再检查。
 skill_names=()
 for f in ai/skills/*.md; do
   skill_names+=("$(basename "${f%.md}")")
@@ -48,20 +48,19 @@ done
 
 for name in "${skill_names[@]}"; do
   if [[ ! -f ".claude/skills/$name/SKILL.md" ]]; then
-    echo "missing: .claude/skills/$name/SKILL.md (ai/skills/$name.md has no Claude Code stub)"
-    missing=1
-  fi
-  if [[ ! -f ".codex/skills/$name/SKILL.md" ]]; then
-    echo "missing: .codex/skills/$name/SKILL.md (ai/skills/$name.md has no Codex stub)"
+    echo "missing: .claude/skills/$name/SKILL.md (ai/skills/$name.md 没有对应的 Claude Code stub)"
     missing=1
   fi
 done
 
-for dir in .claude/skills/*/ .codex/skills/*/; do
+# 反向检查只是警告，不是失败：本项目可以有自己的、不走 ai/skills 正本机制的
+# 项目级 skill（例如 board-card 之外的临时 skill）。上游在这里 exit 1，会让
+# 任何加了自有 skill 的项目直接崩掉。
+for dir in .claude/skills/*/; do
+  [[ -d "$dir" ]] || continue
   name="$(basename "$dir")"
   if [[ ! -f "ai/skills/$name.md" ]]; then
-    echo "dangling stub: $dir points at ai/skills/$name.md, which does not exist"
-    missing=1
+    echo "warn: $dir 没有对应的 ai/skills/$name.md（若这是项目自有 skill 则可忽略）"
   fi
 done
 

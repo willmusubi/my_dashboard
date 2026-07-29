@@ -1,7 +1,7 @@
 {
-  "name": "monstrare",
+  "name": "my-dashboard",
   "private": true,
-  "description": "A gate-based governance workflow for AI coding agents. Nothing ships without evidence.",
+  "description": "个人 AI 协作治理看板：让 agent 不在需求模糊时动手，且没有证据不算完成。fork 自 Monstrare。",
   "license": "MIT",
   "scripts": {
     "kanban": "node tools/kanban/server.mjs"

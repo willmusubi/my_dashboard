@@ -1,216 +1,70 @@
-# Monstrare
+# 治理看板 · my_dashboard
 
-**English** | [繁體中文](README.zh-TW.md)
+一个本地的、零依赖的 AI 协作治理看板。
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+**要解决的问题**：AI agent 从模糊需求就开始写代码、产出大而不可审查的 diff、没有证据就宣称"完成了"。
 
-**A cloneable workflow layer that stops AI coding agents from shipping non-trivial changes based on vague requirements.**
+**核心机制**：看板不只是任务追踪，而是**人和 AI 之间的决策通道**——你在卡片上写下的决策，agent 下一次接手这张卡时一定会读到，并且必须在看板上留下"已确认"的痕迹。
 
-Copy this repo into any project. Claude Code, Codex, and other agentic tools
-then follow the same gated process — spec, plan, task cards, implementation,
-verification, review — before code reaches production.
+## 跑起来
 
-## Preview
+```bash
+npm run kanban                     # → http://127.0.0.1:4420
+KANBAN_PORT=4430 npm run kanban    # 换个端口
+```
 
-The kit ships a local, zero-dependency Kanban board (`tools/kanban/`, `npm run kanban`)
-that visualizes every task's progress through the gates below.
+零依赖，无需 `npm install`。数据是 `tools/kanban/cards/*.json`，一卡一个文件，git 追踪。
+没有保存按钮，改动即时落盘；要撤销就用 `git checkout`。
 
-![Kanban board](tools/kanban/docs/board-screenshot.png)
-![Roadmap view](tools/kanban/docs/roadmap-screenshot.png)
+## 流程
 
-## The Problem
+每个非小型变更走 `ai/process/workflow.md` 定义的这些阶段：
 
-- Agents start coding from vague prompts and produce large, unreviewable diffs.
-- "Looks right" ships without tests, screenshots, or evidence.
-- Architecture and security get reviewed after the code is already written, if at all.
-- Every project reinvents its own ad-hoc process for working with agents.
-
-## How It Works
-
-Every non-trivial change moves through these phases, defined in full in
-`ai/process/workflow.md`:
-
-| Phase | Output | Gate |
+| 阶段 | 产出 | 关卡 |
 | --- | --- | --- |
-| 0. Intake | Problem statement, goal, constraints, unknowns | Vague request -> go to Clarification |
-| 1. Context Discovery | Task-specific context pack: files, patterns, risks, verification commands | — |
-| 2. Clarification | `feature-spec.md`, non-goals, acceptance criteria | Human approval |
-| 3. UI Mockup *(if UI)* | Screen/state maps, 2-3 variants, trade-offs | Human picks a variant |
-| 4. Architecture Plan | Files touched, data/API contracts, rollback plan | High-risk -> architect + security + test review |
-| 5. Task Cards | AI-ready cards meeting `definition-of-ready.md` | — |
-| 6. Implementation | One approved card at a time, small diffs | Scope change -> stop and ask |
-| 7. Verification | Tests, typecheck, lint, build, security scan, screenshots | — |
-| 8. Review | Product / UX / architecture / security / test / code review | `review-gates.md` |
-| 9. Human Acceptance | What changed, evidence, residual risk, follow-ups | No evidence -> not done |
+| 0 收件 | 问题陈述、目标、限制、未知事项 | 需求模糊 → 进入澄清 |
+| 1 情境探索 | 任务专属情境包：文件、模式、风险、验证命令 | — |
+| 2 澄清 | 功能规格书、非目标、验收标准 | **人工核准** |
+| 3 UI Mockup（涉及界面时） | 画面/状态地图、2-3 个变体、取舍表 | **人工选定变体** |
+| 4 架构规划 | 变更文件、数据/API 契约、回滚计划 | 高风险 → 架构 + 安全 + 测试审查 |
+| 5 任务卡 | 符合 `definition-of-ready.md` 的 AI-ready 卡片 | — |
+| 6 实作 | 一次一张已核准的卡，小 diff | 范围改变 → 停下询问 |
+| 7 验证 | 测试、typecheck、lint、build、安全扫描、截图 | — |
+| 8 审查 | 产品 / UX / 架构 / 安全 / 测试 / code review | `review-gates.md` |
+| 9 人工验收 | 变更内容、证据、残留风险、后续任务 | **没有证据就不算完成** |
 
-New project with no Epic/User Story backlog yet? Run the `project-kickoff`
-skill first — it splits the project into Epics -> User Stories -> Tasks and
-seeds `tools/kanban/`.
+代理输出本身**永远不等于核准**。
 
-## Design Quality: Two Layers
+## 目录
 
-UI work is governed by two complementary layers — process alone produces
-compliant-but-ugly screens, so the kit ships both:
+| 路径 | 内容 |
+|---|---|
+| `CLAUDE.md` / `AGENTS.md` | agent 入口与路由规则 |
+| `ai/process/` | 流程规则：工作流、就绪定义、完成定义、情境协议、审查关卡、看板政策 |
+| `ai/templates/` | 只读范本母本，**不得覆写** |
+| `ai/checklists/` | 安全、测试、设计审查检查表 |
+| `ai/context/` | 本项目的架构地图、设计系统、决策记录 |
+| `ai/artifacts/` | 填写完成的产出物，一个 Epic 一个目录 |
+| `ai/skills/` | skill 正本内容；`.claude/skills/` 下是指向它的薄 stub |
+| `.claude/agents/` | 5 个审查子代理（架构 / 安全 / 测试 / UX / 产品） |
+| `tools/kanban/` | 看板本体（`server.mjs` + `index.html`），schema 与 API 见其 README |
 
-1. **Design system (what to use)** — Epic 0 builds the design system in five
-   human-gated stages (framework -> style direction -> design tokens ->
-   component library -> page layouts), persisted to
-   `ai/context/design-system.md`. Every later UI task must reuse those
-   tokens/components; missing components are built in the same style and
-   registered back into the inventory.
-2. **Design craft (how to make it good)** — `ai/skills/design-craft.md`
-   carries the visual-quality discipline (Refactoring UI principles, type
-   scale, 4px spacing grid, layered color systems, depth rules, five
-   interactive states) plus a curated list of high-quality open-source
-   references to compare against before designing. Deliverables are checked
-   against `ai/checklists/design-review-checklist.md`.
+自检：`bash scripts/check-governance.sh`（从仓库根目录跑）
 
-Both live in the repository, so every machine and every agent (Claude Code,
-Codex, ...) that clones the repo gets the same design standard — no hidden
-dependency on skills installed in someone's home directory.
+## 与上游的关系
 
-## Rules Enforced On Every Agent
-
-From `AGENTS.md`, read before any agent touches this repository:
-
-- No non-trivial change from a vague request.
-- Start from context discovery, not assumptions.
-- `definition-of-ready.md` before implementation, `definition-of-done.md` before calling anything done.
-- UI changes need `screen-spec.md` + `mockup-decision.md`, reuse the design system in `ai/context/design-system.md`, and follow the `design-craft` visual discipline.
-- High-risk changes need architecture + security + test review.
-- Reuse existing patterns over new abstractions.
-- Stay inside the approved task card's scope; no unrelated file changes without saying so.
-- No completion claim without evidence: commands, output, screenshots, residual risk.
-
-Agent output is never itself an approval — humans sign off at every gate in
-`ai/process/review-gates.md`.
-
-## What This Replaces
-
-| Inspiration | Borrowed idea |
-| --- | --- |
-| BMAD Method | Role-based AI agile workflows |
-| GitHub Spec Kit | Spec-first: clarify -> plan -> tasks -> implement |
-| Kiro Specs | Requirements, design, and task artifacts |
-| Task Master | PRD-to-task decomposition, model routing |
-| Serena | Semantic project search and context retrieval |
-| SuperClaude | Slash-command style repeatable workflows |
-| Archon | Deterministic, gate-based workflow execution |
-| Plandex | Large-context planning, diff review, controlled execution |
-| CodeRabbit / Qodo | Review-first quality gates |
-
-Not vendored — this kit is a process layer that can call or coexist with any
-of them.
-
-## Repository Layout
-
-```text
-AGENTS.md                     # Codex entrypoint
-CLAUDE.md                     # Claude Code entrypoint
-.claude/skills/               # Claude Code skills
-.claude/agents/               # Claude Code subagents
-.codex/skills/                # Codex skills
-.codex/config.toml            # Optional Codex local defaults
-ai/process/                   # Shared workflow rules
-ai/templates/                 # Specs, task cards, review reports
-ai/context/                   # Project map, design system, and search guides
-ai/checklists/                # Security, testing, and design review gates
-ai/skills/                    # Canonical skill content shared by .claude/skills and .codex/skills
-ai/artifacts/                 # Completed specs, mockups, task cards, verification reports (one folder per Epic)
-ai/examples/                  # Example task and feature artifacts
-tools/kanban/                 # Local Kanban board implementing ai/process/kanban.md
-```
-
-## Quick Start
-
-**Starting a new project?** Clone this repo and build directly inside it —
-`AGENTS.md`, `CLAUDE.md`, and the whole `ai/` toolkit are already at the root.
+fork 自 [Monstrare](https://github.com/pjwang2022/Monstrare)（MIT，见 `NOTICE.md` 与 `LICENSE`）。
+上游 remote 保留为 `upstream` 且**禁止 push**，所以随时可以：
 
 ```bash
-git clone https://github.com/pjwang2022/Monstrare.git my-project
-cd my-project
-rm -rf .git && git init   # start your own history
+git diff upstream/main      # 看自己改了什么
+git log upstream/main..HEAD # 自己的 changelog
+git fetch upstream          # 拉上游修复
 ```
 
-Then make it yours: replace `README.md`/`README.zh-TW.md` with your own
-project's readme, rename `package.json`'s `name`, and optionally delete
-`scripts/install-into-project.sh` and the board-design history under
-`tools/kanban/` (`mockups/`, `mockup-decision.md`, `screen-spec.md`) — those
-belong to Monstrare itself, not your project.
+本 fork 相对上游的主要差异：
 
-Then open Claude Code or Codex in that folder and just describe what you want
-to build:
-
-```bash
-claude
-```
-
-```text
-I want to build an online booking system.
-```
-
-Since there's no Epic/User Story backlog yet, this triggers the
-`project-kickoff` skill: it breaks the idea into Epics -> User Stories ->
-Tasks and seeds `tools/kanban/`. Each task then walks through the phases in
-[How It Works](#how-it-works) on its own.
-
-**Adding this to an existing codebase instead?** Skip to
-[Install Into An Existing Project](#install-into-an-existing-project) below,
-then start from context discovery instead of `project-kickoff`:
-
-```text
-Use the project-search skill to create ai/context/project-map.md and ai/context/code-search-guide.md.
-Do not implement anything yet.
-```
-
-```text
-Use spec-interrogation for: <feature idea>.
-Create a feature spec, screen specs if UI is involved, and AI-ready task cards.
-Stop before implementation for human review.
-```
-
-## Install Into An Existing Project
-
-```bash
-scripts/install-into-project.sh /path/to/your/project
-```
-
-Copies process files, templates, checklists, Claude/Codex skills and agents,
-the governance self-check, GitHub PR/issue templates, and the kanban tool
-(minus Monstrare's own board-design history) into the target project.
-
-Never overwritten: existing `AGENTS.md`, `CLAUDE.md`, `ai/context/` files,
-`ai/artifacts/`, `.codex/config.toml`, and an existing `tools/kanban/`.
-Always updated to the kit's latest version: `ai/process/`, `ai/templates/`,
-`ai/checklists/`, `ai/skills/`, and the skill stubs — if you've locally
-modified those kit files, commit before re-running the installer.
-
-```bash
-scripts/check-governance.sh   # self-check from the repo root
-```
-
-## AI Kanban
-
-`ai/process/kanban.md` is the board policy — it tracks whether a task is
-ready for safe agent execution, not just its status. `tools/kanban/` is one
-implementation of it: a zero-dependency local board that simplifies the
-policy's 12 stages down to 6 lanes (Backlog -> Blocked -> Ready ->
-Implementing -> Verify -> Done). The tool is optional; the policy doesn't
-require it.
-
-```bash
-npm run kanban   # open http://127.0.0.1:4420
-```
-
-![Kanban board](tools/kanban/docs/board-screenshot.png)
-
-- **Add a card** — click "+ 新增卡片" at the bottom of any lane; the server assigns the ID.
-- **Move a card** — drag it into another lane to change its stage, or reorder it within a lane.
-- **Edit details** — click a card to open its panel: owner, risk, agent, Readiness checklist, Review Gates, comments.
-- **Track by Epic/User Story** — switch to the "藍圖" (Roadmap) tab.
-
-![Roadmap view](tools/kanban/docs/roadmap-screenshot.png)
-
-Every action writes straight back to `cards/*.json` — no save button, no
-database; `git commit`/`git push` is how state is persisted and shared. Full
-schema and API reference: [`tools/kanban/README.md`](tools/kanban/README.md).
+- 删除 Codex 支持、安装脚本、上游自己的看板设计史
+- 修复若干**静默损坏数据**的 bug（悬空依赖锁死车道、ID 复用、order 冲突、坏 JSON 废掉整板、后写覆盖）
+- 全文简体化
+- 新增**人 ↔ AI 决策通道**：类型化留言（decision/question/note…）+ CLI + Claude Code hook
