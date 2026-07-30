@@ -27,6 +27,7 @@ required_files=(
   "ai/skills/implementation-plan.md"
   "ai/skills/security-maintainability-review.md"
   "ai/skills/test-verification.md"
+  "ai/skills/board-card.md"
 )
 
 missing=0

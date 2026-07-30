@@ -20,6 +20,7 @@
 | 技术规划与任务卡 | `implementation-plan` | `writing-plans` / `executing-plans` |
 | 安全性与可维护性审查 | `security-maintainability-review` | `review` / `requesting-code-review` |
 | 测试与验证证据 | `test-verification` | `qa` / `verification-before-completion` |
+| 做某张看板卡片、写回进度 | `board-card` | — |
 
 理由：全局 skill 的描述更多也更触发导向，在描述匹配上通常会赢；但它们不认识
 本项目的关卡、产出物惯例和看板协议。

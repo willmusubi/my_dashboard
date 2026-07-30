@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T12:55:23+07:00",
-  "rev": 8,
+  "updatedAt": "2026-07-30T13:03:29+07:00",
+  "rev": 11,
   "epic": "人机决策通道",
   "userStory": "agent 读写通道",
   "track": "backend",
@@ -106,13 +106,37 @@
       "author": "willmusubi",
       "authorKind": "human",
       "kind": "decision",
-      "status": "open",
-      "statusAt": "2026-07-30T12:52:29+07:00",
+      "status": "acked",
+      "statusAt": "2026-07-30T13:03:29+07:00",
       "re": null,
       "supersedes": [
         "c-20260730T124237-5ff6"
       ],
       "text": "改主意了：agent 身份改用环境变量 KANBAN_AGENT，header 只作为覆写。"
+    },
+    {
+      "id": "c-20260730T130329-f2d3",
+      "at": "2026-07-30T13:03:29+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-07-30T13:03:29+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "CLI 八个子命令已实现，show 的输出与 hook 注入共用同一个渲染函数。"
+    },
+    {
+      "id": "c-20260730T130329-b974",
+      "at": "2026-07-30T13:03:29+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T13:03:29+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "server 关闭时的文件回退路径实测可用。"
     }
   ]
 }

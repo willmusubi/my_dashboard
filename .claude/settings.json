@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/tools/kanban/hooks/inject-card-context.mjs\"",
+            "timeout": 5,
+            "statusMessage": "读取看板卡片…"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/tools/kanban/hooks/session-board-brief.mjs\"",
+            "timeout": 5,
+            "statusMessage": "检查看板待处理项…"
+          }
+        ]
+      }
+    ]
+  }
+}

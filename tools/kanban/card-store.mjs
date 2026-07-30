@@ -535,6 +535,77 @@ export function liveHumanItems(card, kind) {
   );
 }
 
+/**
+ * 给 agent 看的卡片摘要。CLI 的 `show` 与 hook 的注入共用这一个函数，所以
+ * agent 无论从哪条路径拿到信息，格式都一样——不会因为「哪边写得不同」而漏读。
+ *
+ * 只放 agent 真正需要的东西：生效中的人工决策、未答的提问、范围与验证契约。
+ * 已取代 / 已完成的决策结构性排除，所以 agent 不可能执行已撤销的指令。
+ */
+export function renderCardForAgent(card, { maxItems = 8 } = {}) {
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  const line = (c) =>
+    "  [" + c.id + "] " + (c.status === "acked" ? "（已确认）" : "（尚未确认）") + " " +
+    String(c.at).slice(0, 16).replace("T", " ") + " " + c.author + "\n" +
+    "    " + String(c.text).replace(/\n/g, "\n    ");
+
+  const decisions = liveHumanItems(card, "decision").slice(-maxItems);
+  const questions = liveHumanItems(card, "question").slice(-maxItems);
+  const agentQuestions = (card.comments || [])
+    .filter((c) => c.kind === "question" && c.authorKind === "agent" && c.status === "open")
+    .slice(-maxItems);
+
+  let out =
+    '<kanban-card id="' + esc(card.id) + '" stage="' + esc(card.stage) +
+    '" risk="' + esc(card.risk) + '" title="' + esc(card.title) + '">\n';
+
+  if (decisions.length) {
+    out += "生效中的人工决策（必须遵守；要推翻必须先问人，不得自行改变）：\n" +
+      decisions.map(line).join("\n") + "\n";
+  }
+  if (questions.length) {
+    out += "人工提出、尚未回答的问题：\n" + questions.map(line).join("\n") + "\n";
+  }
+  if (agentQuestions.length) {
+    out += "你自己之前提出、人还没回答的问题（不要重复问，也不要自行假设答案）：\n" +
+      agentQuestions.map(line).join("\n") + "\n";
+  }
+  if (!decisions.length && !questions.length && !agentQuestions.length) {
+    out += "目前没有待处理的人工决策或提问。\n";
+  }
+
+  const ready = READINESS_KEYS.filter((k) => card.readiness[k]).length;
+  out += "就绪 " + ready + "/" + READINESS_KEYS.length +
+    "，审查关卡 " + GATE_KEYS.filter((k) => card.gates[k]).length + "/" + GATE_KEYS.length + "\n";
+  if (card.dependsOn.length) out += "前置任务：" + card.dependsOn.join(", ") + "\n";
+  if (card.content.trim()) {
+    out += "卡片内容（目标 / 非目标 / 验收标准 / 允许改的文件 / 验证命令）：\n" +
+      card.content.split("\n").map((l) => "  " + l).join("\n") + "\n";
+  }
+  out +=
+    "规则：\n" +
+    "1. 动手前逐条确认上面每一条决策：node tools/kanban/cli.mjs ack " + card.id + " <留言 id>\n" +
+    "2. 有进度或证据就写回：node tools/kanban/cli.mjs comment " + card.id + " --kind progress|evidence --text \"...\"\n" +
+    "3. 遇到决策没涵盖的分歧，执行 node tools/kanban/cli.mjs ask " + card.id + " --text \"...\" 然后停下来问人，不要自己假设。\n" +
+    "</kanban-card>\n";
+  return out;
+}
+
+/** 哪些卡在等人（人写的 open 项）或等 agent（agent 写的 open 提问 / 阻塞）。 */
+export function boardPending() {
+  return readAllCards()
+    .map((c) => {
+      const waitingOnAgent = (c.comments || []).filter(
+        (x) => x.authorKind === "human" && x.status === "open"
+      ).length;
+      const waitingOnHuman = (c.comments || []).filter(
+        (x) => x.authorKind === "agent" && x.status === "open"
+      ).length;
+      return { card: c, waitingOnAgent, waitingOnHuman };
+    })
+    .filter((x) => x.waitingOnAgent || x.waitingOnHuman);
+}
+
 export function readEpics() {
   try {
     return JSON.parse(fs.readFileSync(EPICS_JSON, "utf8"));

@@ -2,14 +2,14 @@
   "id": "DASH-010",
   "title": "cli.mjs：agent 的读写入口，server 关着也能用",
   "content": "目标：agent 永远不直接改 JSON，只调命令动词。\n\n这张卡是整个设计的枢纽：有了 CLI，agent 的读路径是预渲染纯文本、写路径是命令，\n于是「JSON 对 agent 不友好」这个理由消失，不必换成 markdown 真相源。\n\n验收标准：\n- show / open / ack / resolve / comment / ask / answer / stage 八个子命令\n- 端口关闭时回退到直接文件 I/O。人不会一直开着看板；agent 撞 ECONNREFUSED 会\n  放弃或开始手改 JSON，那正是要消灭的失败模式\n- 身份解析不出来就报错退出，不静默以人的身份发言\n- show 的输出格式与 hook 注入的完全一致\n\n允许改的文件：tools/kanban/cli.mjs（新建）, tools/kanban/card-store.mjs\n验证命令：npm test + 关掉 server 跑一遍 cli.mjs show",
-  "stage": "backlog",
+  "stage": "done",
   "risk": "medium",
   "owner": "willmusubi",
   "agent": "claude-code",
   "approvalRequired": false,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T00:00:00+07:00",
-  "rev": 1,
+  "updatedAt": "2026-07-30T13:22:21+07:00",
+  "rev": 7,
   "epic": "人机决策通道",
   "userStory": "agent 读写通道",
   "track": "backend",
@@ -29,10 +29,10 @@
   "gates": {
     "product": false,
     "ui": false,
-    "architecture": false,
+    "architecture": true,
     "security": false,
-    "test": false,
-    "code_review": false
+    "test": true,
+    "code_review": true
   },
   "links": {
     "featureSpec": "",
@@ -42,11 +42,60 @@
     "verificationReport": "",
     "pr": ""
   },
-  "refs": [],
+  "refs": [
+    "tools/kanban/cli.mjs",
+    "tools/kanban/card-store.mjs"
+  ],
   "evidence": {
-    "commands": [],
-    "findings": [],
-    "residual": ""
+    "commands": [
+      "node tools/kanban/cli.mjs show DASH-009（server 开着）",
+      "kill server → node tools/kanban/cli.mjs show / comment（文件回退）",
+      "node tools/kanban/cli.mjs comment --kind decision → 被拒绝，退出码 1",
+      "npm test → 81 项断言全绿"
+    ],
+    "findings": [
+      "renderCardForAgent 放在 card-store，CLI 的 show 与 hook 的注入共用它——格式不可能因为「两边各写一份」而漂移。",
+      "withFallback 的关键细节：服务端明确拒绝（403/400/409）时不能回退去文件里硬写，否则 agent 就绕过了权限规则。用 err.httpHandled 标记区分「业务拒绝」和「连不上」。",
+      "已取代的决策不出现在 show 的输出里——实测 DASH-009 上两条决策只显示新的那条。"
+    ],
+    "residual": "CLI 没有做 epics.json 的读写（不需要）；没有做卡片创建（人在 UI 上建更合适）。"
   },
-  "comments": []
+  "comments": [
+    {
+      "id": "c-20260730T132220-985f",
+      "at": "2026-07-30T13:22:20+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T13:22:20+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "八个子命令全部实测：show / open / ack / resolve / comment / ask / answer / stage。show 的输出与 hook 注入共用 card-store 的 renderCardForAgent，格式必然一致。"
+    },
+    {
+      "id": "c-20260730T132220-c453",
+      "at": "2026-07-30T13:22:20+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T13:22:20+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "文件回退实测：kill 掉 4430 之后 show 和 comment 都正常工作并落盘（rev 递增、留言写入）。agent 不依赖看板开着。"
+    },
+    {
+      "id": "c-20260730T132221-b482",
+      "at": "2026-07-30T13:22:21+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T13:22:21+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "agent 下决策的守卫实测：cli.mjs comment --kind decision 直接被拒绝并退出码 1，提示改用 ask。这一层在 CLI、API、validateCard 三处都有。"
+    }
+  ]
 }
