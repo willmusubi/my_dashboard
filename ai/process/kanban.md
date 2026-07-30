@@ -5,10 +5,10 @@
 
 实作在 `tools/kanban/`（schema 与 API 见 `tools/kanban/README.md`）。
 
-> 上游这份文件定义了 12 个栏位，而工具只有 6 条车道，两者从来没有对应关系，
+> 上游这份文件定义了 12 个栏位（column），而工具只有 6 条车道，两者从来没有对应关系，
 > `tools/kanban/README.md` 也承认了这点。一份和工具矛盾的政策文档只会持续
-> 误导 agent，所以本 fork 按工具的真实形态重写：**治理状态不靠栏位表达，
-> 靠卡片上的 `readiness`（7 项）和 `gates`（6 项）表达。** 这也解释了那两组
+> 误导 agent，所以本 fork 按工具的真实形态重写：**治理状态不靠看板的栏位表达，
+> 靠卡片上的 `readiness`（7 项）和 `gates`（6 项）字段表达。** 这也解释了那两组
 > 字段为什么存在——上游从没把这层说清楚。
 
 ## 六条车道
@@ -24,7 +24,7 @@ blocked（任何阶段都可能进来）
 | **backlog** | 想法或还没准备好的任务。规格、mockup、架构规划都在这个阶段发生 | `readiness` 7 项全勾 |
 | **blocked** | 被前置任务、外部依赖或未答复的提问挡住 | 阻塞原因消失；卡片上人写的提问已被回答 |
 | **ready** | 可以交给 agent 执行 | 已指定 agent owner；允许改的文件范围已明确；`dependsOn` 全部 `done` |
-| **implementing** | agent 正在实作一张已核准的卡 | 有 diff；agent 已回报变更的文件并自己跑过验证 |
+| **implementing** | agent 正在实作一张已批准的卡 | 有 diff；agent 已回报变更的文件并自己跑过验证 |
 | **verify** | 实作已存在，正在补证据与过审查关卡 | `evidence` 已填；相关 `gates` 已勾 |
 | **done** | 已验收且已验证。后续事项另立新卡 | — |
 
@@ -36,15 +36,15 @@ blocked（任何阶段都可能进来）
 
 7 项对应上游那几个「待 XX」栏位，勾满才算 AI-ready（详见 `definition-of-ready.md`）：
 
-| 字段 | 含义 | 对应上游栏位 |
+| 卡片字段 | 含义 | 对应上游栏位 |
 |---|---|---|
-| `problem_clear` | 问题、用户、场景清楚 | 待厘清 |
-| `non_goals_clear` | 非目标明确列出 | 待厘清 |
-| `acceptance_testable` | 验收标准可测试 | 待产品核准 |
+| `problem_clear` | 问题、用户、场景清楚 | 待澄清 |
+| `non_goals_clear` | 非目标明确列出 | 待澄清 |
+| `acceptance_testable` | 验收标准可测试 | 待产品批准 |
 | `files_known` | 相关文件或搜索入口已列出 | 待架构规划 |
 | `scope_defined` | 允许改的文件范围有界 | 待任务卡 |
 | `verification_contract` | 验证方法已定 | 待任务卡 |
-| `human_approval_recorded` | 人工核准状态已记录 | 待产品核准 |
+| `human_approval_recorded` | 人工批准状态已记录 | 待产品批准 |
 
 UI 工作还要额外满足：已出 2-3 个 mockup 变体、**人工已选定一个**（见
 `ai/skills/ui-mockup-gate.md`）。这一关不能省。

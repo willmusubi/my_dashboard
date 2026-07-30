@@ -43,15 +43,15 @@
 
 必要输出：
 
-- 功能规格书：以 `ai/templates/feature-spec.md` 为范本，产出到
-  `ai/artifacts/<Epic>/feature-spec.md`（存放惯例见 `ai/artifacts/README.md`；范本只读，不得覆写）。
-- 待厘清问题。
+- 功能规格书：以 `ai/templates/feature-spec.md` 为模板，产出到
+  `ai/artifacts/<Epic>/feature-spec.md`（存放惯例见 `ai/artifacts/README.md`；模板只读，不得覆写）。
+- 待澄清问题。
 - 明确的非目标。
 - 验收标准。
 
 关卡：
 
-- **进入架构规划前需要人工核准。**
+- **进入架构规划前需要人工批准。**
 
 ## Phase 3：UI Mockup 关卡
 
@@ -59,14 +59,14 @@
 
 先读 `ai/context/design-system.md`。mockup 变体必须以其中已定案的 design token
 与组件库组成，不得凭空发明新风格；缺的组件依 `ai/skills/ui-mockup-gate.md` 的
-「查库 → 照风格补做 → 登记回库」规则处理。视觉品质套用 `ai/skills/design-craft.md`。
+「查库 → 照风格补做 → 登记回库」规则处理。视觉质量套用 `ai/skills/design-craft.md`。
 
 必要输出：
 
 - 画面地图。
 - 状态地图。
 - **2-3 个 mockup 变体**（以既有 token／组件组成）。
-- 重用的 token／组件清单，与需新做并登记的组件（如有）。
+- 重用的 token／组件列表，与需新做并登记的组件（如有）。
 - 取舍比较表。
 - 选定的变体。
 
@@ -105,13 +105,13 @@
 
 ## Phase 6：实作（Implementation）
 
-一次只实作一张已核准的任务卡。
+一次只实作一张已批准的任务卡。
 
 规则：
 
 - **开工前先读那张卡**：`cat tools/kanban/cards/<ID>.json`。
-  卡片 `comments` 里人写的内容是指令，不是背景资料。
-- 写新代码前，先确认是否已有现成的库或框架能解决这个问题，避免重造轮子。
+  卡片 `comments` 里人写的内容是指令，不是背景数据。
+- 写新代码前，先确认是否已有现成的库或框架能解决这个问题，避免重复造轮子。
 - 若有 2-3 个可行的库或做法，**问用户要用哪一种并提出建议**。重大选择不要自己闷头选。
 - 除非有新证据需要更新计划，否则只动允许范围内的文件。
 - 遵循既有项目模式。
@@ -148,7 +148,7 @@
 
 执行相关的审查关卡：产品验收 / UX 审查 / 架构审查 / 安全审查 / 测试审查 / code review。
 
-用 `ai/process/review-gates.md`。**代理输出本身不等于核准。**
+用 `ai/process/review-gates.md`。**代理输出本身不等于批准。**
 
 ## Phase 9：人工验收（Human Acceptance）
 

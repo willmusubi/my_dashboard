@@ -1,13 +1,13 @@
-# 情境目錄
+# 情境目录
 
-這個目錄存放穩定、給 agent 讀取用的專案知識。
+这个目录存放稳定、给 agent 读取用的项目知识。
 
-以下檔案應保持精簡並定期更新：
+以下文件应保持精简并定期更新：
 
-- `project-map.md`：專案裡有什麼。
+- `project-map.md`：项目里有什么。
 - `architecture-map.md`：主要部件如何串接。
-- `design-system.md`：UI 的單一事實來源——框架、風格方向、design token 與元件庫 inventory，由 Epic 0 五階段流程產出，後續所有 UI 任務都要對照它重用。
-- `code-search-guide.md`：怎麼低成本找到東西。
-- `decisions.md`：重要決策與決策原因。
+- `design-system.md`：UI 的单一事实来源——框架、风格方向、design token 与组件库 inventory，由 Epic 0 五阶段流程产出，后续所有 UI 任务都要对照它重用。
+- `code-search-guide.md`：怎么低成本找到东西。
+- `decisions.md`：重要决策与决策原因。
 
-不要把這些檔案變成完整的文件庫。它們是給 agent 導航用的地圖。
+不要把这些文件变成完整的文件库。它们是给 agent 导航用的地图。

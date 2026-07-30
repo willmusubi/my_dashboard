@@ -1,8 +1,8 @@
 /**
- * 治理看板 — 零依賴本地 server
+ * 治理看板 — 零依赖本地 server
  *
- * 啟動：node tools/kanban/server.mjs（或 npm run kanban）
- * 資料：tools/kanban/cards/*.json（一檔一卡，git tracked）
+ * 启动：node tools/kanban/server.mjs（或 npm run kanban）
+ * 数据：tools/kanban/cards/*.json（一文件一卡，git tracked）
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -10,7 +10,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 
 const HOST = "127.0.0.1";
-// 可用 KANBAN_PORT 覆写：平行专案很多时，同时开两块看板不会撞埠。
+// 可用 KANBAN_PORT 覆写：平行项目很多时，同时开两块看板不会撞埠。
 const PORT = Number(process.env.KANBAN_PORT) || 4430;
 
 const ROOT =
@@ -28,8 +28,8 @@ fs.mkdirSync(CARDS_DIR, { recursive: true });
 // generated as `${ID_PREFIX}-001`, `${ID_PREFIX}-002`, ...
 const ID_PREFIX = "DASH";
 
-// 新卡片 owner 與看板留言作者的預設值：取本機 git 身分（這個看板本來就以
-// git 為同步機制），沒有 git 或沒設 user.name 時留空字串（未指派）。
+// 新卡片 owner 与看板留言作者的默认值：取本机 git 身分（这个看板本来就以
+// git 为同步机制），没有 git 或没设 user.name 时留空字符串（未指派）。
 const DEFAULT_OWNER = (() => {
   try {
     return execSync("git config user.name", {
@@ -128,77 +128,77 @@ function isPlainObject(v) {
 }
 
 function validateCard(c) {
-  if (!isPlainObject(c)) return "card 必須是 object";
+  if (!isPlainObject(c)) return "card 必须是 object";
   if (typeof c.id !== "string" || !ID_RE.test(c.id))
-    return "id 必須符合 ^" + ID_PREFIX + "-\\d{3,}$";
+    return "id 必须符合 ^" + ID_PREFIX + "-\\d{3,}$";
   if (typeof c.title !== "string" || c.title.trim() === "")
-    return "title 必須是非空字串";
-  if (typeof c.content !== "string") return "content 必須是字串";
-  if (!STAGES.includes(c.stage)) return "stage 只允許 " + STAGES.join("/");
-  if (!RISKS.includes(c.risk)) return "risk 只允許 " + RISKS.join("/");
-  if (typeof c.owner !== "string") return "owner 必須是字串";
-  if (typeof c.agent !== "string") return "agent 必須是字串";
+    return "title 必须是非空字符串";
+  if (typeof c.content !== "string") return "content 必须是字符串";
+  if (!STAGES.includes(c.stage)) return "stage 只允许 " + STAGES.join("/");
+  if (!RISKS.includes(c.risk)) return "risk 只允许 " + RISKS.join("/");
+  if (typeof c.owner !== "string") return "owner 必须是字符串";
+  if (typeof c.agent !== "string") return "agent 必须是字符串";
   if (typeof c.approvalRequired !== "boolean")
-    return "approvalRequired 必須是 boolean";
-  if (typeof c.createdAt !== "string") return "createdAt 必須是字串";
-  if (!Number.isInteger(c.rev) || c.rev < 1) return "rev 必須是 >= 1 的整數";
-  if (typeof c.updatedAt !== "string") return "updatedAt 必須是字串";
+    return "approvalRequired 必须是 boolean";
+  if (typeof c.createdAt !== "string") return "createdAt 必须是字符串";
+  if (!Number.isInteger(c.rev) || c.rev < 1) return "rev 必须是 >= 1 的整数";
+  if (typeof c.updatedAt !== "string") return "updatedAt 必须是字符串";
   if (!Number.isInteger(c.order) || c.order < 1)
-    return "order 必須是 >= 1 的整數";
-  if (typeof c.epic !== "string") return "epic 必須是字串";
-  if (typeof c.userStory !== "string") return "userStory 必須是字串";
-  if (!TRACKS.includes(c.track)) return "track 只允許 " + TRACKS.join("/");
+    return "order 必须是 >= 1 的整数";
+  if (typeof c.epic !== "string") return "epic 必须是字符串";
+  if (typeof c.userStory !== "string") return "userStory 必须是字符串";
+  if (!TRACKS.includes(c.track)) return "track 只允许 " + TRACKS.join("/");
   if (
     !Array.isArray(c.dependsOn) ||
     c.dependsOn.some((x) => typeof x !== "string" || !ID_RE.test(x))
   ) {
     return (
-      "dependsOn 必須是字串陣列，且每個元素需符合 id 格式 ^" +
+      "dependsOn 必须是字符串数组，且每个元素需符合 id 格式 ^" +
       ID_PREFIX +
       "-\\d{3,}$"
     );
   }
   if (c.dependsOn.includes(c.id)) return "dependsOn 不可包含自己的 id";
 
-  if (!isPlainObject(c.readiness)) return "readiness 必須是 object";
+  if (!isPlainObject(c.readiness)) return "readiness 必须是 object";
   for (const k of READINESS_KEYS) {
     if (typeof c.readiness[k] !== "boolean")
-      return "readiness." + k + " 必須是 boolean";
+      return "readiness." + k + " 必须是 boolean";
   }
-  if (!isPlainObject(c.gates)) return "gates 必須是 object";
+  if (!isPlainObject(c.gates)) return "gates 必须是 object";
   for (const k of GATE_KEYS) {
     if (typeof c.gates[k] !== "boolean")
-      return "gates." + k + " 必須是 boolean";
+      return "gates." + k + " 必须是 boolean";
   }
-  if (!isPlainObject(c.links)) return "links 必須是 object";
+  if (!isPlainObject(c.links)) return "links 必须是 object";
   for (const k of LINK_KEYS) {
-    if (typeof c.links[k] !== "string") return "links." + k + " 必須是字串";
+    if (typeof c.links[k] !== "string") return "links." + k + " 必须是字符串";
   }
   if (!Array.isArray(c.refs) || c.refs.some((r) => typeof r !== "string")) {
-    return "refs 必須是字串陣列";
+    return "refs 必须是字符串数组";
   }
-  if (!isPlainObject(c.evidence)) return "evidence 必須是 object";
+  if (!isPlainObject(c.evidence)) return "evidence 必须是 object";
   if (
     !Array.isArray(c.evidence.commands) ||
     c.evidence.commands.some((x) => typeof x !== "string")
   ) {
-    return "evidence.commands 必須是字串陣列";
+    return "evidence.commands 必须是字符串数组";
   }
   if (
     !Array.isArray(c.evidence.findings) ||
     c.evidence.findings.some((x) => typeof x !== "string")
   ) {
-    return "evidence.findings 必須是字串陣列";
+    return "evidence.findings 必须是字符串数组";
   }
   if (typeof c.evidence.residual !== "string")
-    return "evidence.residual 必須是字串";
-  if (!Array.isArray(c.comments)) return "comments 必須是陣列";
+    return "evidence.residual 必须是字符串";
+  if (!Array.isArray(c.comments)) return "comments 必须是数组";
   for (const item of c.comments) {
     if (!isPlainObject(item))
-      return "comments 每項必須是 { name, time, text } object";
-    if (typeof item.name !== "string") return "comments[].name 必須是字串";
-    if (typeof item.time !== "string") return "comments[].time 必須是字串";
-    if (typeof item.text !== "string") return "comments[].text 必須是字串";
+      return "comments 每项必须是 { name, time, text } object";
+    if (typeof item.name !== "string") return "comments[].name 必须是字符串";
+    if (typeof item.time !== "string") return "comments[].time 必须是字符串";
+    if (typeof item.text !== "string") return "comments[].text 必须是字符串";
   }
   return null;
 }
@@ -209,7 +209,7 @@ function defaultObj(keys, value) {
   return o;
 }
 
-/** 舊資料 / 精簡 client 相容：缺少的欄位補預設值（in-place） */
+/** 旧数据 / 精简 client 兼容：缺少的字段补默认值（in-place） */
 function fillDefaults(c) {
   if (!isPlainObject(c)) return c;
   if (c.content === undefined) c.content = "";
@@ -241,7 +241,7 @@ function fillDefaults(c) {
   return c;
 }
 
-/** 固定 key 順序寫檔，2 空格縮排 + 結尾換行，減少 git diff 噪音 */
+/** 固定 key 顺序写档，2 空格缩排 + 结尾换行，减少 git diff 噪音 */
 function writeCard(c) {
   const normalized = {
     id: c.id,
@@ -309,9 +309,9 @@ function readAllCards() {
 }
 
 /**
- * 從 startId 沿 dependsOn 邊做 DFS，找出第一個可達的循環。
- * cardMap 必須包含這次請求裡「即將寫入」的最新版本（覆蓋掉舊檔內容）。
- * 回傳循環路徑（含重複的起點，方便顯示 "A -> B -> A"），沒有循環回傳 null。
+ * 从 startId 沿 dependsOn 边做 DFS，找出第一个可达的循环。
+ * cardMap 必须包含这次请求里「即将写入」的最新版本（覆盖掉旧档内容）。
+ * 返回循环路径（含重复的起点，方便显示 "A -> B -> A"），没有循环返回 null。
  */
 function detectCycle(startId, cardMap) {
   const path = [];
@@ -334,17 +334,17 @@ function detectCycle(startId, cardMap) {
 }
 
 /**
- * 檢查一張卡的 dependsOn：參照是否存在、是否形成循環、
- * 若要推進到 ready/implementing/verify/done，前置任務是否皆已 done。
- * cardMap 必須包含這次請求裡「即將寫入」的最新版本。回傳錯誤字串，沒有問題回傳 null。
+ * 检查一张卡的 dependsOn：参照是否存在、是否形成循环、
+ * 若要推进到 ready/implementing/verify/done，前置任务是否皆已 done。
+ * cardMap 必须包含这次请求里「即将写入」的最新版本。返回错误字符串，没有问题返回 null。
  */
 function checkDependsOn(card, cardMap) {
   const missing = card.dependsOn.filter((depId) => !cardMap.has(depId));
   if (missing.length)
-    return card.id + ": dependsOn 參照到不存在的卡片：" + missing.join(", ");
+    return card.id + ": dependsOn 参照到不存在的卡片：" + missing.join(", ");
 
   const cycle = detectCycle(card.id, cardMap);
-  if (cycle) return card.id + ": 偵測到循環依賴：" + cycle.join(" -> ");
+  if (cycle) return card.id + ": 侦测到循环依赖：" + cycle.join(" -> ");
 
   if (ADVANCED_STAGES.includes(card.stage)) {
     const unmet = card.dependsOn
@@ -353,9 +353,9 @@ function checkDependsOn(card, cardMap) {
     if (unmet.length) {
       return (
         card.id +
-        ": 前置任務尚未完成（" +
+        ": 前置任务尚未完成（" +
         unmet.map((d) => d.id + " " + d.title).join("、") +
-        "），無法推進到 " +
+        "），无法推进到 " +
         card.stage
       );
     }
@@ -428,16 +428,16 @@ function handleEpics(res) {
     const epics = JSON.parse(fs.readFileSync(EPICS_JSON, "utf8"));
     sendJson(res, 200, epics);
   } catch (err) {
-    sendJson(res, 500, { error: "讀取 epics.json 失敗：" + err.message });
+    sendJson(res, 500, { error: "读取 epics.json 失败：" + err.message });
   }
 }
 
 function handlePutOne(req, res, id, body) {
   const incoming = JSON.parse(body);
   if (!isPlainObject(incoming))
-    return sendJson(res, 400, { error: "body 必須是完整 card object" });
+    return sendJson(res, 400, { error: "body 必须是完整 card object" });
   if (incoming.id !== id)
-    return sendJson(res, 400, { error: "body 的 id 與 URL 不一致" });
+    return sendJson(res, 400, { error: "body 的 id 与 URL 不一致" });
 
   const cardMap = new Map(readAllCards().map((x) => [x.id, x]));
   const current = cardMap.get(id);
@@ -465,7 +465,7 @@ function handlePutOne(req, res, id, body) {
 function handlePutBulk(res, body) {
   const list = JSON.parse(body);
   if (!Array.isArray(list))
-    return sendJson(res, 400, { error: "body 必須是 card 陣列" });
+    return sendJson(res, 400, { error: "body 必须是 card 数组" });
   const cardMap = new Map(readAllCards().map((x) => [x.id, x]));
 
   // 先比对 rev，且必须在 fillDefaults 之前——fillDefaults 会给缺 rev 的卡补
@@ -516,7 +516,7 @@ function handlePutBulk(res, body) {
 function handlePost(res, body) {
   const input = JSON.parse(body);
   if (!isPlainObject(input))
-    return sendJson(res, 400, { error: "body 必須是 object" });
+    return sendJson(res, 400, { error: "body 必须是 object" });
   const existing = readAllCards();
   // 取「磁盘上现存最大」与「曾经发出过的最大」的较大者。只看磁盘的话，删掉
   // 编号最大的卡再建新卡会复用同一个 id，其他卡的 dependsOn 就静默指向了
@@ -637,7 +637,7 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(match[1]);
       if (!ID_RE.test(id))
         return sendJson(res, 400, {
-          error: "id 必須符合 ^" + ID_PREFIX + "-\\d{3,}$",
+          error: "id 必须符合 ^" + ID_PREFIX + "-\\d{3,}$",
         });
       if (req.method === "PUT")
         return handlePutOne(req, res, id, await readBody(req));
@@ -652,7 +652,7 @@ const server = http.createServer(async (req, res) => {
     if (err instanceof SyntaxError && req.method !== "GET") {
       sendJson(res, 400, { error: "body 不是合法 JSON：" + err.message });
     } else {
-      sendJson(res, 500, { error: "寫入失敗：" + err.message });
+      sendJson(res, 500, { error: "写入失败：" + err.message });
     }
   }
 });
@@ -660,15 +660,15 @@ const server = http.createServer(async (req, res) => {
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
     console.error(
-      `[kanban] port ${PORT} 已被占用。請先關掉占用的程序（lsof -i :${PORT}）再重新啟動。`,
+      `[kanban] port ${PORT} 已被占用。请先关掉占用的程序（lsof -i :${PORT}）再重新启动。`,
     );
   } else {
-    console.error("[kanban] server 啟動失敗：" + err.message);
+    console.error("[kanban] server 启动失败：" + err.message);
   }
   process.exit(1);
 });
 
 server.listen(PORT, HOST, () => {
   console.log(`[kanban] 治理看板 → http://${HOST}:${PORT}`);
-  console.log(`[kanban] 資料目錄：${CARDS_DIR}`);
+  console.log(`[kanban] 数据目录：${CARDS_DIR}`);
 });

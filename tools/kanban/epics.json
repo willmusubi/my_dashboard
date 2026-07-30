@@ -1,3 +1,36 @@
 {
-  "epics": []
+  "epics": [
+    {
+      "name": "看板可用性",
+      "definition": "把上游 fork 修到日常真的能用：不静默损坏数据，治理模型能通过 UI 操作。",
+      "stories": [
+        { "name": "数据完整性", "definition": "任何操作都不会静默损坏或丢失卡片数据。" },
+        { "name": "字段可编辑", "definition": "治理模型需要的字段都能在界面上改，不必手写 JSON。" }
+      ]
+    },
+    {
+      "name": "人机决策通道",
+      "definition": "看板成为人和 AI 之间的双向通道：人写下的决策，agent 下次接手时一定读到，并留下已确认的痕迹。",
+      "stories": [
+        { "name": "留言结构化", "definition": "留言能区分决策/提问/记录，能标记已确认、已取代。" },
+        { "name": "agent 读写通道", "definition": "agent 通过 CLI 读卡与回报，不直接改 JSON。" },
+        { "name": "强制注入", "definition": "不依赖 agent 自觉——hook 保证决策一定进入 context。" }
+      ]
+    },
+    {
+      "name": "简体化与文档",
+      "definition": "把上游 1827 行繁体文档转成简体，并修掉文档与代码不一致之处。",
+      "stories": [
+        { "name": "高频入口", "definition": "每轮载入或决定 skill 触发的文本。" },
+        { "name": "低频文档", "definition": "模板、检查表、skill 正本内容。" }
+      ]
+    },
+    {
+      "name": "分发能力",
+      "definition": "my_dashboard 是改造实验室，改好的东西要能安全地分发到其他项目。",
+      "stories": [
+        { "name": "安全分发", "definition": "不静默覆盖、可预演、可回滚。" }
+      ]
+    }
+  ]
 }

@@ -1,78 +1,78 @@
-# 設計系統（Design System）
+# 设计系统（Design System）
 
-由 Epic 0「專案設置」的「UI 設計系統」User Story 分五階段（框架 → 風格 → design token → 元件庫 → 版面）逐步填寫。**這份文件是後續所有功能 Epic 做 UI 時的單一事實來源**：任何前端任務開工前都要先讀它，能用既有 token／元件就必須用；缺的元件要照既有風格補做並登記回這裡（見 `ai/skills/project-kickoff.md` 步驟 6 與 `ai/skills/ui-mockup-gate.md`）。
+由 Epic 0「项目设置」的「UI 设计系统」User Story 分五阶段（框架 → 风格 → design token → 组件库 → 版面）逐步填写。**这份文件是后续所有功能 Epic 做 UI 时的单一事实来源**：任何前端任务开工前都要先读它，能用既有 token／组件就必须用；缺的组件要照既有风格补做并登记回这里（见 `ai/skills/project-kickoff.md` 步骤 6 与 `ai/skills/ui-mockup-gate.md`）。
 
-狀態：範本佔位符（尚未展開設計）。
+状态：模板占位符（尚未展开设计）。
 
-## S1 底層框架
+## S1 底层框架
 
-- UI 框架：待補（例如 React / Vue / SvelteKit）
-- 元件庫策略：待補（採用現成 / 自建；若採用，列出來源如 shadcn/ui、MUI、Ant Design）
-- 樣式方案：待補（例如 Tailwind、CSS-in-JS、CSS Modules）
-- 選定理由：待補
-- 人工核准：待補（核准人／日期）
+- UI 框架：待补（例如 React / Vue / SvelteKit）
+- 组件库策略：待补（采用现成 / 自建；若采用，列出来源如 shadcn/ui、MUI、Ant Design）
+- 样式方案：待补（例如 Tailwind、CSS-in-JS、CSS Modules）
+- 选定理由：待补
+- 人工批准：待补（批准人／日期）
 
-## S2 風格方向
+## S2 风格方向
 
-- 選定的 style tile：待補（變體名稱）
-- 色彩情緒：待補
-- 字體個性：待補
-- 圓角／陰影傾向：待補
-- 密度：待補（緊湊 / 舒適）
-- 亮／暗模式：待補
-- 參考產品：待補
-- 人工核准：待補（核准人／日期）
+- 选定的 style tile：待补（变体名称）
+- 色彩情绪：待补
+- 字体个性：待补
+- 圆角／阴影倾向：待补
+- 密度：待补（紧凑 / 舒适）
+- 亮／暗模式：待补
+- 参考产品：待补
+- 人工批准：待补（批准人／日期）
 
-## S3 Design Token 清單
+## S3 Design Token 列表
 
 ### Primitive Token
 
-| 類別 | Token | 值 | 備註 |
+| 类别 | Token | 值 | 备注 |
 |---|---|---|---|
-| 色彩 | 待補 | 待補 | 完整色票（含各階明度） |
-| 字級 | 待補 | 待補 | type scale |
-| 字重／行高 | 待補 | 待補 | |
-| 間距 | 待補 | 待補 | spacing scale |
-| 圓角 | 待補 | 待補 | |
-| 陰影 | 待補 | 待補 | |
-| z-index | 待補 | 待補 | |
-| 動效 | 待補 | 待補 | 時間與曲線 |
+| 色彩 | 待补 | 待补 | 完整色票（含各阶明度） |
+| 字级 | 待补 | 待补 | type scale |
+| 字重／行高 | 待补 | 待补 | |
+| 间距 | 待补 | 待补 | spacing scale |
+| 圆角 | 待补 | 待补 | |
+| 阴影 | 待补 | 待补 | |
+| z-index | 待补 | 待补 | |
+| 动效 | 待补 | 待补 | 时间与曲线 |
 
 ### Semantic Token
 
-| Token | 對應 primitive | 用途 |
+| Token | 对应 primitive | 用途 |
 |---|---|---|
-| color.primary | 待補 | 待補 |
-| color.surface | 待補 | 待補 |
-| color.danger | 待補 | 待補 |
-| space.page | 待補 | 待補 |
+| color.primary | 待补 | 待补 |
+| color.surface | 待补 | 待补 |
+| color.danger | 待补 | 待补 |
+| space.page | 待补 | 待补 |
 
-### 實際 token 檔位置
+### 实际 token 档位置
 
-- 專案內真實 token 檔路徑：待補（例如 `src/styles/tokens.css`、`tailwind.config.ts` 主題、`theme.ts`）。若專案尚無可跑框架，可留空，僅以上表為準。
-- 人工核准：待補（核准人／日期）
+- 项目内真实 token 档路径：待补（例如 `src/styles/tokens.css`、`tailwind.config.ts` 主题、`theme.ts`）。若项目尚无可跑框架，可留空，仅以上表为准。
+- 人工批准：待补（批准人／日期）
 
-## S4 元件庫 Inventory
+## S4 组件库 Inventory
 
-每做一個核心元件就登記一列。後續 Epic 缺元件、照風格補做後也要回來補登。
+每做一个核心组件就登记一列。后续 Epic 缺组件、照风格补做后也要回来补登。
 
-| 元件 | 狀態 | 涵蓋狀態 | 用到的 token | 檔案位置 | 截圖 | 來源階段 |
+| 组件 | 状态 | 涵盖状态 | 用到的 token | 文件位置 | 截图 | 来源阶段 |
 |---|---|---|---|---|---|---|
-| Button | 待補 | 預設/hover/focus/停用/載入 | 待補 | 待補 | 待補 | S4 |
-| Input | 待補 | 預設/focus/停用/錯誤 | 待補 | 待補 | 待補 | S4 |
-| Select | 待補 | 待補 | 待補 | 待補 | 待補 | S4 |
-| Card | 待補 | 待補 | 待補 | 待補 | 待補 | S4 |
-| Nav | 待補 | 待補 | 待補 | 待補 | 待補 | S4 |
-| Modal/Dialog | 待補 | 待補 | 待補 | 待補 | 待補 | S4 |
-| Table | 待補 | 待補 | 待補 | 待補 | 待補 | S4 |
-| Form | 待補 | 待補 | 待補 | 待補 | 待補 | S4 |
-| Toast/Alert | 待補 | 待補 | 待補 | 待補 | 待補 | S4 |
+| Button | 待补 | 默认/hover/focus/停用/载入 | 待补 | 待补 | 待补 | S4 |
+| Input | 待补 | 默认/focus/停用/错误 | 待补 | 待补 | 待补 | S4 |
+| Select | 待补 | 待补 | 待补 | 待补 | 待补 | S4 |
+| Card | 待补 | 待补 | 待补 | 待补 | 待补 | S4 |
+| Nav | 待补 | 待补 | 待补 | 待补 | 待补 | S4 |
+| Modal/Dialog | 待补 | 待补 | 待补 | 待补 | 待补 | S4 |
+| Table | 待补 | 待补 | 待补 | 待补 | 待补 | S4 |
+| Form | 待补 | 待补 | 待补 | 待补 | 待补 | S4 |
+| Toast/Alert | 待补 | 待补 | 待补 | 待补 | 待补 | S4 |
 
-（「來源階段」記錄這個元件是 S4 初建，還是後續某個功能 Epic 補做並回登的。）
+（「来源阶段」记录这个组件是 S4 初建，还是后续某个功能 Epic 补做并回登的。）
 
-## S5 各介面版面
+## S5 各界面版面
 
-| 介面／使用者端 | 選定版型 | Mockup 決策紀錄 | 人工核准 |
+| 界面／用户端 | 选定版型 | Mockup 决策纪录 | 人工批准 |
 |---|---|---|---|
-| 待補（例如 管理員後台） | 待補 | 連結到 `ai/artifacts/<Epic>/mockup-decision-<畫面>.md` | 待補 |
-| 待補（例如 顧客前台） | 待補 | 待補 | 待補 |
+| 待补（例如 管理员后台） | 待补 | 连结到 `ai/artifacts/<Epic>/mockup-decision-<画面>.md` | 待补 |
+| 待补（例如 顾客前台） | 待补 | 待补 | 待补 |

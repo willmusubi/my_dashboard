@@ -16,7 +16,7 @@
 | 找代码、建情境包 | `project-search` | `investigate` / `systematic-debugging` |
 | 需求澄清、写规格书 | `spec-interrogation` | `spec` / `brainstorming` / `writing-plans` |
 | UI 方案选型与画面状态 | `ui-mockup-gate` | `design-shotgun` / `design-consultation` |
-| UI 视觉品质与设计工艺 | `design-craft` | `frontend-design` / `design-review` |
+| UI 视觉质量与设计工艺 | `design-craft` | `frontend-design` / `design-review` |
 | 技术规划与任务卡 | `implementation-plan` | `writing-plans` / `executing-plans` |
 | 安全性与可维护性审查 | `security-maintainability-review` | `review` / `requesting-code-review` |
 | 测试与验证证据 | `test-verification` | `qa` / `verification-before-completion` |
@@ -34,14 +34,14 @@
 ## 子代理路由
 
 - 产品面模糊性：`product-planner`
-- UI 与互动品质：`ux-reviewer`
+- UI 与互动质量：`ux-reviewer`
 - 架构或跨切面变更：`architect`
 - 安全性敏感变更：`security-reviewer`
 - 测试策略与回归风险：`test-engineer`
 
 ## 最重要的一条
 
-**不得把代理输出当成核准。** 人工核准是 `ai/process/review-gates.md` 每一道关卡的
+**不得把代理输出当成批准。** 人工批准是 `ai/process/review-gates.md` 每一道关卡的
 必要条件。代理可以给出判断、证据和建议，但「通过」只能由人说。
 
 同理：卡片上人写的 `comments` 是指令，agent 写的是记录。要推翻人的决策，

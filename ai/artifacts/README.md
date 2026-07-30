@@ -1,25 +1,25 @@
-# 產出物目錄（Artifacts）
+# 产出物目录（Artifacts）
 
-填寫完成的流程產出物（功能規格書、畫面規格、mockup、任務卡、驗證報告）都存在這裡，**一個 Epic 一個資料夾**。
+填写完成的流程产出物（功能规格书、画面规格、mockup、任务卡、验证报告）都存在这里，**一个 Epic 一个文件夹**。
 
-`ai/templates/` 底下的檔案是**唯讀的範本母本，不得覆寫**——產出時一律「以範本為底，另存到本目錄」。看板卡片的 `links` 欄位（featureSpec / screenSpec / mockupDecision / taskCard / verificationReport）也填這裡的路徑。
+`ai/templates/` 底下的文件是**唯读的模板母本，不得覆写**——产出时一律「以模板为底，另存到本目录」。看板卡片的 `links` 字段（featureSpec / screenSpec / mockupDecision / taskCard / verificationReport）也填这里的路径。
 
-## 結構
+## 结构
 
 ```text
-ai/artifacts/<Epic 名稱>/
-  feature-spec.md               # 以 ai/templates/feature-spec.md 為範本
-  screen-spec-<畫面>.md         # 以 ai/templates/screen-spec.md 為範本，一畫面一份
-  mockups/                      # mockup 變體（HTML 或圖檔），檔名含畫面與變體，如 dashboard-variant-a.html
-  mockup-decision-<畫面>.md     # 以 ai/templates/mockup-decision.md 為範本
-  task-cards/<卡片id>.md        # 以 ai/templates/task-card.md 為範本，一卡一份
-  verification/<卡片id>.md      # 以 ai/templates/verification-report.md 為範本
+ai/artifacts/<Epic 名称>/
+  feature-spec.md               # 以 ai/templates/feature-spec.md 为模板
+  screen-spec-<画面>.md         # 以 ai/templates/screen-spec.md 为模板，一画面一份
+  mockups/                      # mockup 变体（HTML 或图档），档名含画面与变体，如 dashboard-variant-a.html
+  mockup-decision-<画面>.md     # 以 ai/templates/mockup-decision.md 为模板
+  task-cards/<卡片id>.md        # 以 ai/templates/task-card.md 为模板，一卡一份
+  verification/<卡片id>.md      # 以 ai/templates/verification-report.md 为模板
 ```
 
-Epic 資料夾名稱與 `tools/kanban/epics.json` 的 Epic `name` 一致（例如 `ai/artifacts/專案設置/`、`ai/artifacts/預約管理/`）。
+Epic 文件夹名称与 `tools/kanban/epics.json` 的 Epic `name` 一致（例如 `ai/artifacts/项目设置/`、`ai/artifacts/预约管理/`）。
 
-## 規則
+## 规则
 
-- 產出物跟程式碼一樣走 git：commit 就是核准紀錄的一部分。
-- 不確定該放哪時，回來讀這份 README，不要就地發明新位置。
-- 範本更新不回溯：已產出的文件維持產出當下的結構即可。
+- 产出物跟代码一样走 git：commit 就是批准纪录的一部分。
+- 不确定该放哪时，回来读这份 README，不要就地发明新位置。
+- 模板更新不回溯：已产出的文件维持产出当下的结构即可。

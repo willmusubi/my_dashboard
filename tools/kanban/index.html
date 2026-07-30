@@ -207,7 +207,7 @@
     </div>
     <div class="view-tabs" role="tablist">
       <button type="button" class="is-active" data-view="board" role="tab">看板</button>
-      <button type="button" data-view="roadmap" role="tab">藍圖</button>
+      <button type="button" data-view="roadmap" role="tab">蓝图</button>
     </div>
   </div>
 </div>
@@ -233,11 +233,11 @@
   var ID_PREFIX = "DASH";  // 同上，由 /api/config 带入，供 dependsOn 的提示文字用
 
   var STAGES = [
-    { id: "backlog",       label: "Backlog 待辦",      color: "#5b6472" },
+    { id: "backlog",       label: "Backlog 待办",      color: "#5b6472" },
     { id: "blocked",       label: "Blocked",           color: "#d23b3b" },
-    { id: "ready",         label: "Ready 就緒",        color: "#147d6f" },
-    { id: "implementing",  label: "Implementing 進行中", color: "#3446d6" },
-    { id: "verify",        label: "Verify 驗證中",      color: "#6b46c1" },
+    { id: "ready",         label: "Ready 就绪",        color: "#147d6f" },
+    { id: "implementing",  label: "Implementing 进行中", color: "#3446d6" },
+    { id: "verify",        label: "Verify 验证中",      color: "#6b46c1" },
     { id: "done",          label: "Done 完成",         color: "#1f9d6b" }
   ];
   var WIP_CAPS = { implementing: 3, verify: 5 };
@@ -268,7 +268,7 @@
     ["problem_clear", "问题明确"], ["non_goals_clear", "非目标明确"],
     ["acceptance_testable", "验收可测"], ["files_known", "相关文件已列出"],
     ["scope_defined", "范围有界"], ["verification_contract", "验证方法已定"],
-    ["human_approval_recorded", "人工核准已记录"]
+    ["human_approval_recorded", "人工批准已记录"]
   ];
   var GATES = [
     ["product", "产品"], ["ui", "UI"], ["architecture", "架构"],
@@ -367,16 +367,16 @@
       var dep = getTicket(id);
       if (!dep) missing.push(id); else if (dep.stage !== "done") unmet.push(id);
     });
-    if (missing.length) return '<span class="pill dep-pill dep-missing">⚠️ 依賴的卡片已不存在</span>';
-    if (unmet.length) return '<span class="pill dep-pill dep-blocked">⛔ 依賴 ' + unmet.length + ' 張未完成</span>';
-    return '<span class="pill dep-pill dep-ok">🔗 依賴 ' + tk.dependsOn.length + ' 張（已完成）</span>';
+    if (missing.length) return '<span class="pill dep-pill dep-missing">⚠️ 依赖的卡片已不存在</span>';
+    if (unmet.length) return '<span class="pill dep-pill dep-blocked">⛔ 依赖 ' + unmet.length + ' 张未完成</span>';
+    return '<span class="pill dep-pill dep-ok">🔗 依赖 ' + tk.dependsOn.length + ' 张（已完成）</span>';
   }
 
   function cardHtml(tk) {
     var badges = '<span class="pill risk-' + tk.risk + '">' + riskLabel(tk.risk) + "</span>";
     if (tk.track && tk.track !== "n/a") badges += '<span class="pill track-pill">' + trackLabel(tk.track) + "</span>";
     if (tk.agent) badges += '<span class="pill agent-pill">' + escapeHtml(tk.agent) + "</span>";
-    if (tk.approvalRequired) badges += '<span class="pill approval-pill">需人工核准</span>';
+    if (tk.approvalRequired) badges += '<span class="pill approval-pill">需人工批准</span>';
     badges += dependsOnBadge(tk);
     return (
       '<div class="ticket-card risk-stripe-' + tk.risk + '" data-id="' + escapeHtml(tk.id) + '" draggable="true" tabindex="0">' +
@@ -393,7 +393,7 @@
     var cap = WIP_CAPS[stage.id];
     var over = cap && items.length > cap;
     var gauge = cap ? items.length + " / " + cap : String(items.length);
-    var body = items.length ? items.map(cardHtml).join("") : '<div class="lane-empty">— 沒有卡片 —</div>';
+    var body = items.length ? items.map(cardHtml).join("") : '<div class="lane-empty">— 没有卡片 —</div>';
     return (
       '<div class="lane" data-stage="' + stage.id + '" style="border-top: 3px solid ' + stage.color + '">' +
       '<div class="lane-head">' +
@@ -437,7 +437,7 @@
     var doneCount = tasks.filter(function (t) { return t.stage === "done"; }).length;
     var body = tasks.length
       ? '<div class="story-tasks">' + tasks.map(taskRowHtml).join("") + "</div>"
-      : '<p class="no-tasks">尚無任務卡。</p>';
+      : '<p class="no-tasks">尚无任务卡。</p>';
     return (
       '<div class="story-block">' +
       '<div class="story-head"><span class="story-name">' + escapeHtml(story.name) + "</span>" +
@@ -456,7 +456,7 @@
     var stories = (epic.stories || []).map(function (s) { return storyBlockHtml(epic.name, s); }).join("");
     var orphans = tasks.filter(function (t) { return storyNames.indexOf(t.userStory) === -1; });
     if (orphans.length) {
-      stories += storyBlockHtml(epic.name, { name: "（未分類任務）", definition: "屬於這個 Epic，但還沒指定 User Story。", __orphan: true });
+      stories += storyBlockHtml(epic.name, { name: "（未分类任务）", definition: "属于这个 Epic，但还没指定 User Story。", __orphan: true });
     }
     return (
       '<div class="epic-card">' +
@@ -474,9 +474,9 @@
   function renderRoadmap() {
     document.getElementById("roadmap").innerHTML = EPICS.length
       ? EPICS.map(epicCardHtml).join("")
-      : '<p class="no-tasks">尚無 Epic。開始新專案時，先跟 Claude／Codex 說明這個專案要做什麼，' +
-        '走一遍 spec-interrogation → implementation-plan 流程，把功能模組（Epic）、用戶需求（User Story）' +
-        '寫進 <span class="mono">tools/kanban/epics.json</span>，任務卡再透過看板分頁的「+ 新增卡片」建立並指定 Epic / User Story。</p>';
+      : '<p class="no-tasks">尚无 Epic。开始新项目时，先跟 Claude 说明这个项目要做什么，' +
+        '走一遍 spec-interrogation → implementation-plan 流程，把功能模块（Epic）、用户需求（User Story）' +
+        '写进 <span class="mono">tools/kanban/epics.json</span>，任务卡再通过看板分页的「+ 新增卡片」建立并指定 Epic / User Story。</p>';
   }
 
   function renderAll() { renderLanes(); renderRoadmap(); }
@@ -562,7 +562,7 @@
         fSelect("分轨", "track", tk.track, TRACKS, function (t) { return trackLabel(t) || "不适用"; }) +
         fInput("Owner", "owner", tk.owner) +
         fInput("Agent", "agent", tk.agent, { placeholder: "claude-code" }) +
-        '<div class="fld"><span class="fld-label">需人工核准</span><div class="fld-inline">' +
+        '<div class="fld"><span class="fld-label">需人工批准</span><div class="fld-inline">' +
           fCheck("是", "approvalRequired", tk.approvalRequired) + "</div></div>" +
         fInput("Epic", "epic", tk.epic, { list: "dl-epics" }) +
         fInput("User Story", "userStory", tk.userStory, { list: "dl-stories" }) +
@@ -652,7 +652,7 @@
     });
     if (changed.length) {
       saveBulk(changed).then(function (resp) {
-        // 必须用服务端回传的版本更新本地 rev，否则下一次拖拽会带着旧 rev 撞 409
+        // 必须用服务端返回的版本更新本地 rev，否则下一次拖拽会带着旧 rev 撞 409
         (resp.cards || []).forEach(function (saved) {
           var tk = getTicket(saved.id);
           if (tk) Object.keys(saved).forEach(function (k) { tk[k] = saved[k]; });
@@ -718,7 +718,7 @@
       var stageId = addBtn.dataset.addTo;
       var form = document.createElement("div");
       form.className = "lane-add-form";
-      form.innerHTML = '<input type="text" placeholder="卡片標題…" autofocus><div class="row">' +
+      form.innerHTML = '<input type="text" placeholder="卡片标题…" autofocus><div class="row">' +
         '<button type="button" class="save">新增</button><button type="button" class="cancel">取消</button></div>';
       addBtn.replaceWith(form);
       var input = form.querySelector("input");
@@ -757,7 +757,7 @@
     }
 
     if (e.target.id === "delete-card" && openId) {
-      if (!window.confirm("確定要刪除 " + openId + " 嗎？此動作無法復原。")) return;
+      if (!window.confirm("确定要删除 " + openId + " 吗？此操作无法撤销。")) return;
       var idToDelete = openId;
       deleteCard(idToDelete).then(function () {
         TICKETS = TICKETS.filter(function (x) { return x.id !== idToDelete; });
@@ -843,7 +843,7 @@
     if (e.key === "Escape" && !document.getElementById("modal-overlay").hidden) closeModal();
   });
 
-  loadAll().then(renderAll).catch(function (err) { showToast("讀取失敗：" + err.message, true); });
+  loadAll().then(renderAll).catch(function (err) { showToast("读取失败：" + err.message, true); });
 })();
 </script>
 </body>
