@@ -51,12 +51,28 @@ UI 工作还要额外满足：已出 2-3 个 mockup 变体、**人工已选定�
 
 ## Gates：什么时候能进 done
 
-6 项对应上游的「待审查 / 待人工验收」（详见 `review-gates.md`）：
-`product` / `ui` / `architecture` / `security` / `test` / `code_review`。
+6 项对应上游的「待审查 / 待人工验收」（详见 `review-gates.md`）。
 
-不是每张卡都要勾满——低风险的卡不需要架构和安全审查。但**高风险变更
-（认证、权限、支付、密钥、文件处理、网络、数据库迁移、基础设施、跨服务）
-必须勾 `architecture` + `security` + `test`**。
+**和 readiness 不同，gates 不需要勾满**——「这张卡要过哪几关」由它的 `risk` 和
+`track` 决定。所以界面上的分母是**这张卡的必需项数**，不是固定的 6：
+
+| gate | 对应关卡 | 谁勾 | 何时必需 |
+|---|---|---|---|
+| `product` | 产品关卡 | **人**（产品负责人） | 总是 |
+| `ui` | UI Mockup 关卡 | **人**（产品负责人或设计师） | `track` 是 `frontend` 或 `fullstack` |
+| `architecture` | 架构关卡 | agent；**高风险时人复核** | `risk` 是 `high` |
+| `security` | 安全性关卡 | agent；**高风险时人批准** | `risk` 是 `high` |
+| `test` | 验证关卡 | agent | 总是 |
+| `code_review` | 合并关卡 | agent | 总是 |
+
+举例：`medium` + `frontend` 的卡需要 4 项（product / ui / test / code_review）；
+`low` + `backend` 只需 3 项；`high` 的卡六项全需要。
+
+**`product` 和 `ui` 只有人能勾，agent 不得自己勾**——那等于把代理输出当成批准，
+是 `CLAUDE.md` 明令禁止的。高风险卡的 `architecture` 与 `security` 同理。
+
+这套判定实作在 `tools/kanban/card-store.mjs` 的 `requiredGates()` / `gateOwner()`，
+界面与 `cli.mjs show` 共用同一份规则。
 
 ## WIP 上限
 

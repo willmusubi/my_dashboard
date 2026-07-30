@@ -185,6 +185,54 @@ console.log("── 未知字段：报错而不是静默丢弃 ──");
   truthy("留言未知字段 → 报错", !!store.validateCard(c));
 }
 
+console.log("── 必需关卡的判定（gates 分母不是固定的 6）──");
+{
+  const mk = (risk, track) => store.fillDefaults({
+    id: store.formatId(3), title: "x", stage: "backlog", risk, track,
+    owner: "liutong", createdAt: store.todayStr(), order: 1,
+  });
+
+  eq("低风险后端卡 → 只需 product/test/code_review",
+    store.requiredGates(mk("low", "backend")), ["product", "test", "code_review"]);
+  eq("低风险前端卡 → 加上 ui",
+    store.requiredGates(mk("low", "frontend")), ["product", "ui", "test", "code_review"]);
+  eq("fullstack 视为含前端",
+    store.requiredGates(mk("low", "fullstack")), ["product", "ui", "test", "code_review"]);
+  eq("高风险 → 加上 architecture/security",
+    store.requiredGates(mk("high", "backend")),
+    ["product", "architecture", "security", "test", "code_review"]);
+  eq("高风险前端 → 六项全需要",
+    store.requiredGates(mk("high", "frontend")), [...store.GATE_KEYS]);
+  eq("返回顺序与 GATE_KEYS 一致（界面按固定顺序渲染）",
+    store.requiredGates(mk("high", "frontend")), [...store.GATE_KEYS]);
+
+  eq("product 只有人能批", store.gateOwner(mk("low", "backend"), "product"), "human");
+  eq("ui 只有人能批", store.gateOwner(mk("low", "frontend"), "ui"), "human");
+  eq("低风险的 architecture 归 agent", store.gateOwner(mk("low", "backend"), "architecture"), "agent");
+  eq("高风险的 architecture 需要人", store.gateOwner(mk("high", "backend"), "architecture"), "human");
+  eq("高风险的 security 需要人", store.gateOwner(mk("high", "backend"), "security"), "human");
+  eq("test 始终归 agent", store.gateOwner(mk("high", "backend"), "test"), "agent");
+
+  // 复现用户看到的那张卡：medium + frontend，已勾 ui/test/code_review
+  const c = mk("medium", "frontend");
+  c.gates.ui = true; c.gates.test = true; c.gates.code_review = true;
+  const gp = store.gateProgress(c);
+  eq("DASH-002 那种卡：分母是 4 不是 6", gp.required.length, 4);
+  eq("已过 3 项", gp.done.length, 3);
+  eq("差的是 product（而且只有人能批）", gp.missing, ["product"]);
+  eq("差的那项归属人", store.gateOwner(c, gp.missing[0]), "human");
+
+  // 勾了不必需的关卡不该让分母变大
+  c.gates.security = true;
+  eq("额外勾了非必需的 security，分母仍是 4", store.gateProgress(c).required.length, 4);
+  eq("分子也不受影响", store.gateProgress(c).done.length, 3);
+
+  // agent 看到的文本要说清楚谁该做什么
+  const txt = store.renderCardForAgent(c);
+  truthy("renderCardForAgent 显示 3/4", txt.includes("审查关卡 3/4"));
+  truthy("并提示 product 要等人批、不要自己勾", /等人批（不要自己勾）：product/.test(txt));
+}
+
 console.log("── 原子写 ──");
 {
   const c = blank(store.formatId(9));

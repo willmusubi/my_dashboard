@@ -37,6 +37,45 @@ export const READINESS_KEYS = [
   "scope_defined", "verification_contract", "human_approval_recorded",
 ];
 export const GATE_KEYS = ["product", "ui", "architecture", "security", "test", "code_review"];
+
+/* ══ 谁负责勾什么 ══
+ * readiness 和 gates 的语义是相反的，别用同一套显示逻辑（这是曾经的一个 bug）：
+ *   readiness —— 7 项**必须全满**才能进 ready（definition-of-ready.md）
+ *   gates     —— **按需**。低风险的卡不需要架构和安全审查（kanban.md）
+ * 所以 gates 的分母是「这张卡真正需要哪几个」，不是固定的 6。
+ */
+
+// 只有人能批的关卡。review-gates.md：产品关卡的批准者是「人工产品负责人」，
+// UI Mockup 关卡是「人工产品负责人或设计师」。agent 不要自己勾这两个。
+export const HUMAN_GATES = ["product", "ui"];
+// 高风险时这两关也需要人：架构「高风险任务再加上人工审查」、
+// 安全「高风险任务需人工批准」。
+export const HUMAN_GATES_WHEN_HIGH_RISK = ["architecture", "security"];
+// readiness 里唯一只有人能勾的一项。
+export const HUMAN_READINESS = ["human_approval_recorded"];
+
+/** 这张卡真正需要过哪几道关卡。规则来自 review-gates.md 的批准者与 kanban.md 的风险规则。 */
+export function requiredGates(card) {
+  const req = ["product", "test", "code_review"]; // 每张卡都要
+  const track = card && card.track;
+  if (track === "frontend" || track === "fullstack") req.push("ui");
+  if (card && card.risk === "high") req.push("architecture", "security");
+  return GATE_KEYS.filter((k) => req.includes(k)); // 按 GATE_KEYS 的固定顺序返回
+}
+
+/** 这一项该由谁勾。用于界面上标出「等你的项」，以及提醒 agent 别越权。 */
+export function gateOwner(card, key) {
+  if (HUMAN_GATES.includes(key)) return "human";
+  if (card && card.risk === "high" && HUMAN_GATES_WHEN_HIGH_RISK.includes(key)) return "human";
+  return "agent";
+}
+
+/** gates 完成度：分母是必需项，不是 6。 */
+export function gateProgress(card) {
+  const req = requiredGates(card);
+  const done = req.filter((k) => card.gates && card.gates[k]);
+  return { required: req, done, missing: req.filter((k) => !(card.gates && card.gates[k])) };
+}
 export const LINK_KEYS = [
   "featureSpec", "screenSpec", "mockupDecision", "taskCard", "verificationReport", "pr",
 ];
@@ -574,9 +613,21 @@ export function renderCardForAgent(card, { maxItems = 8 } = {}) {
     out += "目前没有待处理的人工决策或提问。\n";
   }
 
+  // readiness 分母固定 7（必须全满）；gates 分母是这张卡的必需项，不是固定的 6。
   const ready = READINESS_KEYS.filter((k) => card.readiness[k]).length;
+  const gp = gateProgress(card);
   out += "就绪 " + ready + "/" + READINESS_KEYS.length +
-    "，审查关卡 " + GATE_KEYS.filter((k) => card.gates[k]).length + "/" + GATE_KEYS.length + "\n";
+    "，审查关卡 " + gp.done.length + "/" + gp.required.length;
+  if (gp.missing.length) {
+    const mine = gp.missing.filter((k) => gateOwner(card, k) === "agent");
+    const human = gp.missing.filter((k) => gateOwner(card, k) === "human");
+    const bits = [];
+    if (mine.length) bits.push("你要过：" + mine.join("、"));
+    // 这几关只有人能批，不要自己勾——勾了等于把代理输出当成批准。
+    if (human.length) bits.push("等人批（不要自己勾）：" + human.join("、"));
+    out += "（" + bits.join("；") + "）";
+  }
+  out += "\n";
   if (card.dependsOn.length) out += "前置任务：" + card.dependsOn.join(", ") + "\n";
   if (card.content.trim()) {
     out += "卡片内容（目标 / 非目标 / 验收标准 / 允许改的文件 / 验证命令）：\n" +

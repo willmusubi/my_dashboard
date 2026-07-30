@@ -147,6 +147,15 @@
   .chk { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-dim); cursor: pointer; }
   .chk input { width: 15px; height: 15px; accent-color: var(--accent); flex-shrink: 0; }
   .chk input:checked + span { color: var(--ink); font-weight: 600; }
+  /* 「只有你能勾」的项：一眼看出该动哪个 */
+  .chk-human span { color: var(--actor-human); }
+  .chk-human input { accent-color: var(--actor-human); }
+  .chk-who { font-size: 11px; line-height: 1; flex-shrink: 0; }
+  .chk-note { font-size: 10.5px; color: var(--ink-faint); font-weight: 400; margin-left: 4px; }
+  /* 这张卡不需要的关卡：弱化，别让它看起来像待办 */
+  .chk-na { opacity: 0.42; }
+  .chk-na input { pointer-events: auto; }
+  .sect-hint { font-size: 10.5px; color: var(--ink-faint); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 8px; }
   .tally { font-size: 11px; font-weight: 700; color: var(--ink-faint); background: var(--surface-sunken); border-radius: 999px; padding: 1px 7px; margin-left: 6px; letter-spacing: 0; text-transform: none; }
   .tally-full { color: var(--good); background: var(--good-soft); }
   .sect { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
@@ -302,6 +311,32 @@
     ["product", "产品"], ["ui", "UI"], ["architecture", "架构"],
     ["security", "安全"], ["test", "测试"], ["code_review", "Code Review"]
   ];
+
+  /* ── 谁负责勾什么 ──
+     这段规则与 card-store.mjs 的 requiredGates / gateOwner 是同一套。
+     **改一处必须改另一处** —— index.html 是内联脚本，没有 module 机制可共用。
+     服务端那份有单元测试覆盖（test-store.mjs）。
+
+     readiness 与 gates 的语义是相反的，不要用同一套显示逻辑：
+       readiness → 7 项必须全满才能进 ready
+       gates     → 按需。低风险的卡不需要架构和安全审查，分母不是固定的 6 */
+  var HUMAN_GATES = ["product", "ui"];              // 只有人能批
+  var HUMAN_GATES_HIGH = ["architecture", "security"]; // 高风险时也需要人
+  var HUMAN_READINESS = ["human_approval_recorded"];
+
+  function requiredGates(tk) {
+    var req = ["product", "test", "code_review"];
+    if (tk.track === "frontend" || tk.track === "fullstack") req.push("ui");
+    if (tk.risk === "high") req.push("architecture", "security");
+    return GATES.map(function (p) { return p[0]; })
+      .filter(function (k) { return req.indexOf(k) >= 0; });
+  }
+
+  function gateOwner(tk, key) {
+    if (HUMAN_GATES.indexOf(key) >= 0) return "human";
+    if (tk.risk === "high" && HUMAN_GATES_HIGH.indexOf(key) >= 0) return "human";
+    return "agent";
+  }
   var LINKS = [
     ["featureSpec", "功能规格书"], ["taskCard", "任务卡"], ["screenSpec", "画面规格"],
     ["mockupDecision", "Mockup 决策"], ["verificationReport", "验证报告"], ["pr", "PR"]
@@ -552,9 +587,14 @@
     return '<label class="fld"><span class="fld-label">' + label + "</span>" +
       '<select class="fld-input" data-field="' + path + '" data-kind="text">' + body + "</select></label>";
   }
-  function fCheck(label, path, value) {
-    return '<label class="chk"><input type="checkbox" data-field="' + path + '" data-kind="bool"' +
-      (value ? " checked" : "") + "><span>" + label + "</span></label>";
+  function fCheck(label, path, value, o) {
+    o = o || {};
+    var cls = "chk" + (o.dim ? " chk-na" : "") + (o.owner === "human" ? " chk-human" : "");
+    // 👤 标出「只有你能勾」的项 —— 20 个字段长得一样时，人不知道该动哪个
+    var mark = o.owner === "human" ? '<span class="chk-who" title="只有你能勾">👤</span>' : "";
+    return '<label class="' + cls + '"><input type="checkbox" data-field="' + path +
+      '" data-kind="bool"' + (value ? " checked" : "") + ">" + mark + "<span>" + label +
+      (o.note ? '<span class="chk-note">' + o.note + "</span>" : "") + "</span></label>";
   }
   function fArea(label, path, value, kind, placeholder) {
     return '<div class="fld fld-wide"><span class="fld-label">' + label + "</span>" +
@@ -602,9 +642,20 @@
     }).length;
   }
 
-  function tally(pairs, obj) {
+  /** readiness 用：7 项必须全满才算就绪 */
+  function tallyAll(pairs, obj) {
     var n = pairs.filter(function (p) { return obj[p[0]]; }).length;
-    return '<span class="tally' + (n === pairs.length ? " tally-full" : "") + '">' + n + " / " + pairs.length + "</span>";
+    return '<span class="tally' + (n === pairs.length ? " tally-full" : "") + '">' +
+      n + " / " + pairs.length + "</span>";
+  }
+
+  /** gates 用：分母是这张卡的必需项数，不是固定的 6。
+   *  曾经这两处共用一个 tally()，于是 medium/frontend 卡显示成误导的 3/6。 */
+  function tallyRequired(tk) {
+    var req = requiredGates(tk);
+    var n = req.filter(function (k) { return tk.gates[k]; }).length;
+    return '<span class="tally' + (n === req.length ? " tally-full" : "") + '">' +
+      n + " / " + req.length + "</span>";
   }
 
   function openModal(id) {
@@ -650,14 +701,27 @@
       '<textarea class="content-input" data-field="content" data-kind="text" placeholder="目标 / 非目标 / 验收标准 / 允许改的文件 / 验证命令…">' +
       escapeHtml(tk.content) + "</textarea></div>" +
 
-      '<div><span class="modal-section-label">就绪 Readiness ' + tally(READINESS, tk.readiness) + "</span>" +
+      '<div><span class="modal-section-label">就绪 Readiness ' + tallyAll(READINESS, tk.readiness) +
+      '<span class="sect-hint">7 项要全满才能进 ready</span></span>' +
       '<div class="chk-grid">' + READINESS.map(function (p) {
-        return fCheck(p[1], "readiness." + p[0], tk.readiness[p[0]]);
+        return fCheck(p[1], "readiness." + p[0], tk.readiness[p[0]], {
+          owner: HUMAN_READINESS.indexOf(p[0]) >= 0 ? "human" : null
+        });
       }).join("") + "</div></div>" +
 
-      '<div><span class="modal-section-label">审查关卡 Gates ' + tally(GATES, tk.gates) + "</span>" +
+      '<div><span class="modal-section-label">审查关卡 Gates ' + tallyRequired(tk) +
+      '<span class="sect-hint">按风险与分轨定，👤 只有你能勾</span></span>' +
       '<div class="chk-grid">' + GATES.map(function (p) {
-        return fCheck(p[1], "gates." + p[0], tk.gates[p[0]]);
+        var req = requiredGates(tk);
+        var isReq = req.indexOf(p[0]) >= 0;
+        var checked = tk.gates[p[0]];
+        // 不适用的关卡要说明白，否则「未勾的灰方框」看起来像待办
+        var note = isReq ? "" : (checked ? " · 非必需" : " · 不适用");
+        return fCheck(p[1], "gates." + p[0], checked, {
+          owner: isReq ? gateOwner(tk, p[0]) : null,
+          note: note,
+          dim: !isReq && !checked
+        });
       }).join("") + "</div></div>" +
 
       '<div><span class="modal-section-label">关联文档</span><div class="fld-grid">' +

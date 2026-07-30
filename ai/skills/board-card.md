@@ -45,6 +45,13 @@ node tools/kanban/cli.mjs comment <ID> --kind blocker   --text "..."
 node tools/kanban/cli.mjs stage <ID> implementing   # 再 verify，再 done
 ```
 
+**`gates` 里 `product` 和 `ui` 只有人能勾，你不要自己勾**——那等于把自己的输出
+当成批准。高风险卡的 `architecture` / `security` 同理。`cli.mjs show` 的输出会
+直接告诉你哪几关归你、哪几关在等人。
+
+`gates` 也**不需要勾满 6 项**：要过哪几关由卡片的 `risk` 和 `track` 决定
+（规则见 `ai/process/kanban.md`）。别看到「3/6」就以为还差 3 项。
+
 **填 `evidence.residual` 时，每一条都要让人立刻答得出「现在要不要有人跟」**
 （详见 `ai/process/definition-of-done.md`）：
 

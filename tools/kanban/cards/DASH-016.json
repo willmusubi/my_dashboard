@@ -1,0 +1,100 @@
+{
+  "id": "DASH-016",
+  "title": "让界面表达「谁负责什么」：修 gates 计数 + 标出等你的项",
+  "content": "目标：打开一张卡，3 秒内能说出「现在轮到我做什么」。\n\n背景：用户看到「审查关卡 GATES 3/6」问「这是应该通过还是不通过？我没有理解」。\n根因是我在 U1 引入的 bug —— tally() 对 readiness 和 gates 用了同一套逻辑\n（全满才变绿），但两者语义相反：readiness 必须 7/7，gates 却是按需\n（kanban.md：低风险的卡不需要架构和安全审查）。于是「3/6」暗示还差 3 个，\n真相是这张卡只需要 4 个。不适用的架构/安全显示成灰方框，看起来像待办。\n\n更根本的问题：用户问「可编辑的意义是什么，原版基本都是 AI 自己填好」——他是对的。\n我做 U1 的依据（67 张卡里 links 47/67 高频使用）只证明字段有用，不证明人需要\n手动编辑。可编辑仍必要（product/ui 只有人能批、AI 填错要能改），但界面没区分\n「等你拍板的」和「AI 填的、你只是看」。\n\n非目标：\n- 不把字段改回只读（AI 填错就只能手改 JSON，回到上游的坑）\n- 不加「人没勾就拦住 done」的强制（先让界面说清楚）\n\n验收标准：\n- gates 分母是这张卡的必需项数，按 risk/track 算\n- 不适用的关卡标「不适用」并弱化，不计入分母\n- 只有人能勾的项带 👤 并用 human 色\n- cli.mjs show 与界面共用同一套判定\n- 规则写进 kanban.md 与 board-card.md\n\n允许改的文件：tools/kanban/card-store.mjs, tools/kanban/index.html,\ntools/kanban/test-store.mjs, ai/process/kanban.md, ai/skills/board-card.md\n验证命令：npm test && 浏览器实测三种 risk/track 组合",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-31",
+  "updatedAt": "2026-07-31T00:03:32+07:00",
+  "rev": 8,
+  "epic": "看板可用性",
+  "userStory": "字段可编辑",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": true,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "tools/kanban/card-store.mjs",
+    "tools/kanban/index.html",
+    "ai/process/kanban.md"
+  ],
+  "evidence": {
+    "commands": [
+      "npm test → 单元 71（新增 20 项 requiredGates）+ 集成 39 = 110 项断言全绿",
+      "bash scripts/check-governance.sh → passed",
+      "浏览器实测 medium/frontend、high/fullstack、low/n-a 三种组合",
+      "cli.mjs show 三张卡，输出与界面一致"
+    ],
+    "findings": [
+      "根因是一个通用函数套了两种相反语义：tally() 用 n===总数 才变绿，这对必须全满的 readiness 正确，对按需的 gates 完全错误。拆成 tallyAll() 与 tallyRequired() 之后问题消失。通用化之前要先确认语义真的相同。",
+      "「不适用」和「未完成」在旧界面上长得一模一样（都是灰方框），这本身就是误导——用户问「是应该通过还是不通过」正是被这个问号住的。现在不适用的项弱化并标注，含义自明。",
+      "用户的更深一层质疑是对的：我把 20 个字段全做成可编辑，依据是「这些字段高频使用」，但那只证明字段有用，不证明人要手动编辑。真正只有人能动的是 3 项（human_approval_recorded、gates.product、gates.ui），高风险再加 2 项。加 👤 标记后，界面第一次表达出了「谁负责什么」。"
+    ],
+    "residual": "**不用跟**：requiredGates/gateOwner 在 index.html 里复制了一份（内联脚本无 module 机制）。两处都有交叉引用注释，服务端那份有 20 项单元测试。触发重新评估的条件：前端拆成独立文件时（那需要先给 server 加静态路由），合并成一份。"
+  },
+  "comments": [
+    {
+      "id": "c-20260731T000332-22c1",
+      "at": "2026-07-31T00:03:32+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-31T00:03:32+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "浏览器三组实测：DASH-002（medium/frontend）→ 3/4，架构与安全标不适用，产品带 👤；DASH-003（high/fullstack）→ 3/6，产品/UI/架构/安全四项都带 👤，无不适用项；DASH-005（low/n-a）→ 2/3，UI/架构/安全都标不适用。"
+    },
+    {
+      "id": "c-20260731T000332-0fa2",
+      "at": "2026-07-31T00:03:32+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-31T00:03:32+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "cli.mjs show 与界面一致：DASH-002「审查关卡 3/4（等人批（不要自己勾）：product）」、DASH-003「3/6（…product、ui、security）」、DASH-001「3/5（…product、security）」。20 项 requiredGates 单元测试全绿。"
+    },
+    {
+      "id": "c-20260731T000332-70b4",
+      "at": "2026-07-31T00:03:32+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-07-31T00:03:32+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "技术债：index.html 是内联脚本没有 module 机制，requiredGates/gateOwner 在前端复制了一份。两处都加了交叉引用注释，服务端那份有单元测试兜底。改规则要同时改两处。"
+    }
+  ]
+}
