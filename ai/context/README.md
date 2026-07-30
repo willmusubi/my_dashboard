@@ -6,7 +6,7 @@
 
 - `project-map.md`：项目里有什么。
 - `architecture-map.md`：主要部件如何串接。
-- `design-system.md`：UI 的单一事实来源——框架、风格方向、design token 与组件库 inventory，由 Epic 0 五阶段流程产出，后续所有 UI 任务都要对照它重用。
+- `design-system.md`：UI 的单一事实来源——框架、风格方向、design token 与组件库 inventory，由 Epic 0 的设计系统展开顺序（S1–S5）产出，后续所有 UI 任务都要对照它重用。
 - `code-search-guide.md`：怎么低成本找到东西。
 - `decisions.md`：重要决策与决策原因。
 

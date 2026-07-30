@@ -1,6 +1,6 @@
 # 设计系统（Design System）
 
-由 Epic 0「项目设置」的「UI 设计系统」User Story 分五阶段（框架 → 风格 → design token → 组件库 → 版面）逐步填写。**这份文件是后续所有功能 Epic 做 UI 时的单一事实来源**：任何前端任务开工前都要先读它，能用既有 token／组件就必须用；缺的组件要照既有风格补做并登记回这里（见 `ai/skills/project-kickoff.md` 步骤 6 与 `ai/skills/ui-mockup-gate.md`）。
+由 Epic 0「项目设置」的「UI 设计系统」User Story 按 S1–S5 的顺序（框架 → 风格 → design token → 组件库 → 版面）逐步填写；卡片粒度与是否合并由项目规模决定，见 `ai/skills/project-kickoff.md` 步骤 2a。**这份文件是后续所有功能 Epic 做 UI 时的单一事实来源**：任何前端任务开工前都要先读它，能用既有 token／组件就必须用；缺的组件要照既有风格补做并登记回这里（见 `ai/skills/project-kickoff.md` 步骤 6 与 `ai/skills/ui-mockup-gate.md`）。
 
 状态：模板占位符（尚未展开设计）。
 

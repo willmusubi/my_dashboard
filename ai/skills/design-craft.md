@@ -4,7 +4,7 @@
 
 ## 何时使用
 
-- Epic 0 的五阶段设计流程（`ai/skills/project-kickoff.md` 步骤 2a 的 S2–S5）全程。
+- Epic 0 的设计系统展开顺序（`ai/skills/project-kickoff.md` 步骤 2a 的 S2–S5）全程。
 - `ui-mockup-gate` 产出任何 mockup 变体之前。
 - 任何前端任务的实作过程中。
 - Design review、或用户抱怨「丑」「看起来怪」「不对齐」时。

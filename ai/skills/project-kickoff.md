@@ -68,11 +68,11 @@
 
 **S2–S5 全程套用 `ai/skills/design-craft.md` 的设计工艺纪律**（type scale、4 的倍数间距、色彩系统分阶、depth 三选一、实作前先比对高质量开源参考），确保产出的不只是「有走完流程」，而是达到与高质量 production 产品同级的视觉水准。
 
-- **S1 — 底层框架与组件库策略**。依步骤 1 的技术栈，决定 UI 框架、组件库是「采用现成（如 shadcn/ui、MUI、Ant Design）」还是「自建」、以及样式方案（如 Tailwind、CSS-in-JS、CSS Modules）。作法同步骤 6 的「探索现成包」：列 2-3 个合理选项、附优劣与自己的建议。**人工关卡：选定框架与组件库策略**，写进 `design-system.md` 的「底层框架」。
+- **S1 — 底层框架与组件库策略**。依步骤 1 的技术栈，决定 UI 框架、组件库是「采用现成（如 shadcn/ui、MUI、Ant Design）」还是「自建」、以及样式方案（如 Tailwind、CSS-in-JS、CSS Modules）。作法同步骤 6 的「探索现成包」：列 2-3 个合理选项、附优劣与自己的建议。**产出**：选定的框架与组件库策略，写进 `design-system.md` 的「底层框架」。
 - **S2 — 视觉风格方向**。针对选定框架，产出 2-3 个 **style tile**（风格方向，不是完整版面）：每个变体呈现色彩情绪、字体个性、圆角与阴影倾向、密度、亮／暗模式与 1-2 个参考产品，让人工比较「整体气质」。这是 `ui-mockup-gate` 的风格方向变体。**人工关卡：选定一个风格方向**，写进 `design-system.md` 的「风格方向」。
-- **S3 — Design Token**。从选定的风格方向，定义 primitive token（完整色票、字级 scale、字重、行高、间距 scale、圆角、阴影、z-index、动效时间与曲线）与 semantic token（如 `color.primary`、`color.surface`、`color.danger`、`space.page` 等语意层）。全部列进 `design-system.md` 的「Design Token 列表」；若项目已有可跑的框架，顺带在项目内产出真实 token 档（如 `tokens.css`／Tailwind 主题／theme 档）并在文件里记录其路径。**人工关卡：批准 token**。
-- **S4 — 核心组件库**。**只用 S3 的 token** 做出基础组件（至少涵盖 button、input、select、checkbox/radio、card、nav、modal/dialog、table、form、toast/alert，依项目需要增减），每个组件涵盖必要状态（默认、hover、focus、停用、载入、错误）。做一个就登记进 `design-system.md` 的「组件库 inventory」（组件名／状态／用到的 token／文件位置／截图）。**人工关卡：批准组件库**。
-- **S5 — 各界面版面 mockup**。到这一阶段才依步骤 1 判断的主要界面／用户端（例如管理员后台、顾客前台，各自一张任务卡）套用 `ui-mockup-gate`，用**已定案的 token 与组件库**拼出 2-3 个完整版面（layout）变体——整体版型、信息架构、导览与内容区配置。**人工关卡：每一端各选定一个版型**，记录于 `design-system.md`。
+- **S3 — Design Token**。从选定的风格方向，定义 primitive token（完整色票、字级 scale、字重、行高、间距 scale、圆角、阴影、z-index、动效时间与曲线）与 semantic token（如 `color.primary`、`color.surface`、`color.danger`、`space.page` 等语意层）。全部列进 `design-system.md` 的「Design Token 列表」；若项目已有可跑的框架，顺带在项目内产出真实 token 档（如 `tokens.css`／Tailwind 主题／theme 档）并在文件里记录其路径。**产出**：token 列表与（若框架已可跑）真实 token 文件。
+- **S4 — 核心组件库**。**只用 S3 的 token** 做出基础组件（至少涵盖 button、input、select、checkbox/radio、card、nav、modal/dialog、table、form、toast/alert，依项目需要增减），每个组件涵盖必要状态（默认、hover、focus、停用、载入、错误）。做一个就登记进 `design-system.md` 的「组件库 inventory」（组件名／状态／用到的 token／文件位置／截图）。**产出**：已登记进 inventory 的组件。
+- **S5 — 各界面版面 mockup**。到这一阶段才依步骤 1 判断的主要界面／用户端（例如管理员后台、顾客前台，各自一张任务卡）套用 `ui-mockup-gate`，用**已定案的 token 与组件库**拼出 2-3 个完整版面（layout）变体——整体版型、信息架构、导览与内容区配置。**产出**：每一端选定的版型，记录于 `design-system.md`。（这一步走 `ui-mockup-gate`，它本身就带「出 2-3 个变体停下来等人选」的关卡。）
 
 这些阶段用 `implementation-plan` skill 拆成范围明确的任务卡（`userStory` 都对应
 「UI 设计系统」）。**卡片粒度和是否合并由项目规模决定**，不必一阶段一张。
@@ -121,7 +121,7 @@ S2 的风格定案，这条值得列；其余按实际情况）。若某阶段�
 
 对每个已选定的 User Story，用 `implementation-plan` skill 拆成任务卡，全端功能依该 skill 的「全端功能拆分规则」默认拆成前端／后端／前后端串接三张卡；若该 Epic 需要先立架构基础，依该 skill 的「Epic 架构优先」规则先拆架构基础卡。
 
-每张任务卡都要建立成 `tools/kanban/` 底下一张真实卡片（一卡一个 JSON 档，`stage` 从 `backlog` 开始），并设定 `epic` / `userStory` 对应到上面选定的名称，让看板的「蓝图」分页能正确归类、算出完成度。除了步骤 2 规定的「每个功能 Epic 第一张卡要 dependsOn 全部『项目设置』卡片」，同 Epic 内若套用了架构基础卡，其余卡也要在 `dependsOn` 填上该架构基础卡的 id。`backlog` 车道内的 `order` 也要照步骤 3 排好的 Epic 顺序给值，较前面（较底层／较基础）Epic 的任务卡 `order` 要比较后面 Epic 的任务卡小，让看板从上到下就是建议的构建顺序。
+每张任务卡都要建立成 `tools/kanban/` 底下一张真实卡片（一卡一个 JSON 档，`stage` 从 `backlog` 开始），并设定 `epic` / `userStory` 对应到上面选定的名称，让看板的「蓝图」分页能正确归类、算出完成度。同 Epic 内若套用了架构基础卡，其余卡要在 `dependsOn` 填上该架构基础卡的 id；跨 Epic 的依赖按步骤 2 的「只按真实需要列」处理，**不要**给每个功能 Epic 的首卡挂上 Epic 0 的全部卡片。`backlog` 车道内的 `order` 也要照步骤 3 排好的 Epic 顺序给值，较前面（较底层／较基础）Epic 的任务卡 `order` 要比较后面 Epic 的任务卡小，让看板从上到下就是建议的构建顺序。
 
 ### 6. 逐一任务的实作循环
 
@@ -147,6 +147,6 @@ S2 的风格定案，这条值得列；其余按实际情况）。若某阶段�
 
 - 已确认的技术栈与部署目标。
 - `tools/kanban/epics.json` 内已选定的 Epic 与 User Story，含固定排最前面的「项目设置」Epic，其余 Epic 依基础程度由大到小排序。
-- 若项目有 UI：已填写的 `ai/context/design-system.md`（框架、风格方向、design token、组件库 inventory、各界面版面），由 Epic 0 的五阶段流程逐步产出。
+- 若项目有 UI：已填写的 `ai/context/design-system.md`（框架、风格方向、design token、组件库 inventory、各界面版面），由 Epic 0 的设计系统展开顺序（S1–S5）逐步产出。
 - `tools/kanban/cards/` 内对应的任务卡（含 `epic` / `userStory` / `dependsOn`）。
 - 逐张任务卡的实作与验证纪录。

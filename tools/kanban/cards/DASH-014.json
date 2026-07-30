@@ -1,0 +1,102 @@
+{
+  "id": "DASH-014",
+  "title": "修掉 U0 改动的三处文档残留",
+  "content": "目标：让 project-kickoff.md 内部对 dependsOn 与设计系统关卡的说法前后一致。\n\n背景：U0（解除 Epic 0 序列化封锁）只改了步骤 2 和 2a 的前言，没往下扫引用。\n步骤 5 仍写着「除了步骤 2 规定的『每张首卡 dependsOn 全部项目设置卡片』」——\n而步骤 2 现在规定的正好相反。agent 从上往下读会照步骤 5 执行，序列化屏障复活。\n\n非目标：不碰 implementation-plan.md 的「Epic 架构优先规则」——那是同一个 Epic\n内部的真实依赖（共用 layout / 权限中介层 / 核心数据表），与跨 Epic 的强制屏障\n不是一回事。\n\n验收标准：\n- grep 不到「全部『项目设置』」「dependsOn 全部」「步骤 2 规定」\n- 「人工关卡」在 2a 里只剩 S2（前言明说只保留这一关）\n- grep 不到「五阶段」\n- check-governance 通过、npm test 全绿\n\n允许改的文件：ai/skills/project-kickoff.md, ai/skills/design-craft.md,\nai/context/README.md, ai/context/design-system.md\n验证命令：bash scripts/check-governance.sh && npm test",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T17:02:21+07:00",
+  "rev": 8,
+  "epic": "简体化与文档",
+  "userStory": "高频入口",
+  "track": "n/a",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "ai/skills/project-kickoff.md",
+    "ai/skills/design-craft.md",
+    "ai/context/README.md",
+    "ai/context/design-system.md"
+  ],
+  "evidence": {
+    "commands": [
+      "grep -rn '全部『项目设置』|dependsOn 全部|步骤 2 规定' ai/ → 无结果",
+      "grep -n '人工关卡' ai/skills/project-kickoff.md → 只剩 S2",
+      "grep -rn '五阶段' ai/ → 无结果",
+      "bash scripts/check-governance.sh → passed",
+      "npm test → 90 项断言全绿"
+    ],
+    "findings": [
+      "步骤 5 引用了一条已被删除的规定，这不是措辞不一致而是事实写错——它声称「步骤 2 规定了 A」，而步骤 2 规定的是「不要 A」。agent 从上往下读会照步骤 5 执行。",
+      "2a 的前言说「不是五道强制关卡，真正值得保留的只有 S2」，但下面五个条目每条都以「人工关卡：」结尾。概括性前言打不过具体列表项，所以改列表项而不是加强前言。",
+      "第三类（四处「五阶段」名称）经复核只是名称没跟着改，不造成行为错误。上一轮我把它和前两类并列，夸大了严重程度，已在回复中更正。"
+    ],
+    "residual": "发现一个待定问题：内容未变的整卡 PUT 也会 bumpRev（DASH-001 的 rev 从 1 涨到 3 而内容无变化）。这会产生 git 噪音，且可能让其他客户端的 If-Match 假失效。未在本卡范围内处理。"
+  },
+  "comments": [
+    {
+      "id": "c-20260730T170221-ea4e",
+      "at": "2026-07-30T17:02:21+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T17:02:21+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "grep 验证：①「全部『项目设置』/dependsOn 全部/步骤 2 规定」无残留；②「人工关卡」只剩 S2 一处（第 59 行是前言的描述性提及）；③「五阶段」无残留。"
+    },
+    {
+      "id": "c-20260730T170221-bb14",
+      "at": "2026-07-30T17:02:21+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T17:02:21+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "bash scripts/check-governance.sh → passed；npm test → 单元 51 + 集成 39 = 90 项断言全绿。纯文档改动，未碰任何代码。"
+    },
+    {
+      "id": "c-20260730T170221-e8d9",
+      "at": "2026-07-30T17:02:21+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-07-30T17:02:21+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "根因是我上次只改了规则的定义处（步骤 2 / 2a 前言），没扫它在同一文件下游和其他文件里的引用。文档改动也需要一次「引用扫描」，和改函数签名要扫调用点是一回事。"
+    }
+  ]
+}
