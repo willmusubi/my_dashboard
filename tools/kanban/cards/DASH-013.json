@@ -2,14 +2,14 @@
   "id": "DASH-013",
   "title": "重写安全版分发脚本",
   "content": "目标：my_dashboard 是改造实验室 + 分发源，改好的东西要能安全地装到其他项目。\n\n背景：上游 install-into-project.sh 已在 Phase 0 删除——它对\nai/{process,templates,checklists,skills,examples} 和 .claude/{skills,agents}\n做无条件 cp -R 覆盖，无备份、无日志、无 dry-run、无卸载。定制过的文件一跑就没。\n\n验收标准：\n- --dry-run 预演，逐行报告将覆盖 / 跳过 / 新建什么\n- 覆盖前备份到 .monstrare-backup-<时间戳>/\n- 区分 kit-owned（刷新）与 project-owned（永不碰：cards/、epics.json、\n  ai/context/、ai/artifacts/）\n- 目标项目可自定 ID_PREFIX 与端口\n- 拒绝 $HOME 作为目标；检查目标 .claude 是否为符号链接（cp -R 会跟随，写进全局目录）\n\n允许改的文件：scripts/install-into-project.sh（新建）\n验证命令：对一个临时目录跑 --dry-run 再真跑，比对结果",
-  "stage": "backlog",
+  "stage": "done",
   "risk": "high",
   "owner": "willmusubi",
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T00:00:00+07:00",
-  "rev": 1,
+  "updatedAt": "2026-07-30T13:31:32+07:00",
+  "rev": 6,
   "epic": "分发能力",
   "userStory": "安全分发",
   "track": "integration",
@@ -22,15 +22,15 @@
     "files_known": true,
     "scope_defined": true,
     "verification_contract": true,
-    "human_approval_recorded": false
+    "human_approval_recorded": true
   },
   "gates": {
     "product": false,
     "ui": false,
-    "architecture": false,
-    "security": false,
-    "test": false,
-    "code_review": false
+    "architecture": true,
+    "security": true,
+    "test": true,
+    "code_review": true
   },
   "links": {
     "featureSpec": "",
@@ -40,11 +40,62 @@
     "verificationReport": "",
     "pr": ""
   },
-  "refs": [],
+  "refs": [
+    "scripts/install-into-project.sh"
+  ],
   "evidence": {
-    "commands": [],
-    "findings": [],
-    "residual": ""
+    "commands": [
+      "bash scripts/install-into-project.sh $HOME → 拒绝",
+      "bash scripts/install-into-project.sh <含 .claude 符号链接的目录> → 拒绝",
+      "--dry-run → 24 个动作全部只报告不写入，目标目录仍为空",
+      "连跑两次 → 第二次 17 项「相同，跳过」（幂等）",
+      "目标项目内 bash scripts/check-governance.sh → passed；npm test → 30/30",
+      "--prefix TKT → 新建卡片 id 为 TKT-001"
+    ],
+    "findings": [
+      "上游脚本的根本问题不是「忘了加 --dry-run」，是没有 kit-owned / project-owned 的区分。它把 ai/skills 和 ai/context 一视同仁地 cp -R，于是目标项目写在 ai/context 里的架构地图和设计系统会被一起冲掉。这一版把两类分开：kit-owned 每次刷新（覆盖前备份），project-owned 目标已有就永不碰。",
+      "符号链接检查不是过度防御：cp -R 会跟随链接。如果目标项目的 .claude 指向 ~/.claude，安装就会把 kit 的 skills 和 agents 写进全局配置目录，污染所有其他项目。",
+      "卡片目录只建空骨架，绝不把本仓库的卡片复制过去——那会让两个项目的 id 空间混在一起。",
+      "ID 前缀通过 KANBAN_ID_PREFIX 环境变量注入而不是改代码，所以分发出去的 card-store.mjs 是同一份，升级时不会因为「目标改过前缀」而产生冲突。"
+    ],
+    "residual": ".env.kanban 很可能被目标项目 .gitignore 的 .env* 规则忽略（已在输出里提示：要让配置随仓库走就写进 package.json）。脚本不动目标的 package.json——那需要解析并合并 JSON，风险大于收益，改为在输出里提示手动加一行。没有 uninstall 子命令，改为在输出里列出要删的路径。"
   },
-  "comments": []
+  "comments": [
+    {
+      "id": "c-20260730T133131-a172",
+      "at": "2026-07-30T13:31:31+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T13:31:31+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "安全阀实测：拒绝 $HOME、拒绝本仓库自己、拒绝不存在的目录、拒绝目标 .claude 是符号链接（cp -R 会跟随它写进全局 ~/.claude）。"
+    },
+    {
+      "id": "c-20260730T133131-9c57",
+      "at": "2026-07-30T13:31:31+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T13:31:31+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "定制保留实测：改过的 CLAUDE.md / epics.json / ai/context 都报「保留目标版本」且内容未变。kit 文件被目标改动后报「覆盖（已备份）」，备份目录里那份确实是目标的改动版。"
+    },
+    {
+      "id": "c-20260730T133131-8a2a",
+      "at": "2026-07-30T13:31:31+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T13:31:31+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "装好的项目实测可用：check-governance passed、npm test 30/30、ID 前缀换成 TKT 后新卡是 TKT-001。"
+    }
+  ]
 }
