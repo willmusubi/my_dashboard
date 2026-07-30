@@ -23,6 +23,16 @@ ok(){ echo "  ✅ $1"; PASS=$((PASS+1)); }
 no(){ echo "  ❌ $1"; echo "     got: $2"; FAIL=$((FAIL+1)); }
 chk(){ [ "$2" = "$3" ] && ok "$1" || no "$1" "expected [$3] got [$2]"; }
 
+# 先跑数据层单元测试（不经 HTTP，快且定位准）；挂了就没必要往下跑集成测试。
+echo "══ card-store 单元测试 ══"
+mkdir -p "$TMPROOT/unit"
+if ! KANBAN_CARDS_DIR="$TMPROOT/unit" node "$REPO/tools/kanban/test-store.mjs"; then
+  echo "card-store 单元测试失败，中止"
+  exit 1
+fi
+echo
+echo "══ HTTP 集成测试 ══"
+
 KANBAN_PORT=$PORT KANBAN_CARDS_DIR="$CARDS" node "$REPO/tools/kanban/server.mjs" >/tmp/t1.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null; wait $SRV 2>/dev/null; rm -rf "$TMPROOT"' EXIT

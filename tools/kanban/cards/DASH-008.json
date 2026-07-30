@@ -2,14 +2,14 @@
   "id": "DASH-008",
   "title": "类型化 comment schema + 原子写",
   "content": "目标：让一条留言能被 agent 分辨出「这是必须遵守的决策」还是「随口一说」，\n并且能标记已确认 / 已完成 / 已取代。\n\n背景：现在 comments 只有 {name, time, text} 三个纯文本字段，time 是\n\"07-03 13:58\"（无年份无时区，无法比较先后）。而 three_kingdoms_traveler 那块\n看板上 11 条留言全是 claude 写的，人一条都没写过——人的决策是被 agent 转述的\n（「用户拍板方案一」）。这说明现在的留言写了也没用，所以人干脆不写。\n\n非目标：不做 UI（DASH-012）。不改 JSON 作为真相源这件事。\n\n验收标准：\n- 新增字段 id / at(ISO 带时区) / author / authorKind / kind / status / statusAt / re / supersedes\n- authorKind=agent 永不允许 kind=decision（API 403 + validateCard 兜底）\n- 留言文本不可变，只 status 可改；修正靠新留言 + supersedes\n- 未知字段返回 400，而不是被 writeCard 静默丢弃\n- 写入改为 tmp + rename 原子写；.gitignore 加 cards/*.tmp*（现有的 tmp/ 是目录模式，匹配不到）\n- 旧格式留言首次读取时归一化为 kind=note / status=done，不得回溯升格为 decision\n\n允许改的文件：tools/kanban/card-store.mjs（新建）, tools/kanban/server.mjs, .gitignore\n验证命令：npm test",
-  "stage": "ready",
+  "stage": "done",
   "risk": "high",
   "owner": "willmusubi",
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T00:00:00+07:00",
-  "rev": 1,
+  "updatedAt": "2026-07-30T12:17:51+07:00",
+  "rev": 3,
   "epic": "人机决策通道",
   "userStory": "留言结构化",
   "track": "backend",
@@ -27,26 +27,42 @@
   "gates": {
     "product": false,
     "ui": false,
-    "architecture": false,
+    "architecture": true,
     "security": false,
-    "test": false,
-    "code_review": false
+    "test": true,
+    "code_review": true
   },
   "links": {
     "featureSpec": "",
     "screenSpec": "",
     "mockupDecision": "",
     "taskCard": "",
-    "verificationReport": "",
+    "verificationReport": "tools/kanban/test-store.mjs",
     "pr": ""
   },
   "refs": [
-    "tools/kanban/server.mjs"
+    "tools/kanban/card-store.mjs",
+    "tools/kanban/server.mjs",
+    "tools/kanban/test-store.mjs"
   ],
   "evidence": {
-    "commands": [],
-    "findings": [],
-    "residual": ""
+    "commands": [
+      "KANBAN_CARDS_DIR=$(mktemp -d) node tools/kanban/test-store.mjs → 通过 51，失败 0",
+      "bash tools/kanban/test.sh → 单元 51 + 集成 15，共 66 项断言全绿",
+      "node --check card-store.mjs / server.mjs → OK",
+      "用现有 13 张真卡实测：正常读取、整卡 PUT 通过、rev 递增"
+    ],
+    "findings": [
+      "数据层抽成 card-store.mjs（server.mjs 从 678 行降到约 290 行，只剩路由）。这是「agent 永远不直接改 JSON」得以成立的前提：cli.mjs 与 server 走同一套不变量，不必写两遍校验。",
+      "三条载荷不变量，不是装饰：（1）authorKind=agent 永不允许 kind=decision，appendComment 拒绝 + validateCard 兜底，所以 hook 注入的「生效中的人工决策」按构造只可能是人写的；（2）留言文本不可变、只追加，修正靠新留言 + supersedes，于是并发永远没有文本要合并；（3）superseded 不能直接设，只能是新留言 supersedes 的副作用，所以没有东西能被静默抹掉。",
+      "supersedes 是让「下一轮安全」的那个字段：旧决策一旦被取代就从 liveHumanItems 的筛选里结构性消失，agent 不可能再执行已撤销的指令。测试里验证了生效决策从 2 条收敛到 1 条且是新那条。",
+      "未知字段从「被 writeCard 静默丢弃」改成「返回 400 并说明要同时改哪三处」。静默删除才是真缺陷——一个会告诉你的白名单没问题。",
+      "旧格式留言（{name,time,text}）迁移时一律降为 kind=note / status=done，不得回溯升格为 decision：它们写的时候没有任何机制保证被读到，当成生效指令是危险的。",
+      "写入改为 tmp + rename 原子化，并给 .gitignore 加 cards/*.tmp*——原有的 tmp/ 是目录模式，匹配不到 DASH-001.json.tmp12345。",
+      "整卡 PUT（含拖拽的整批路径）现在一律从磁盘取 comments、忽略客户端送来的，所以人在浏览器拖卡不可能洗掉 agent 200ms 前贴的留言。",
+      "跑测试时发现 writeCard 不保证目录存在（用户删掉 cards/ 就写不进去），已加 mkdirSync。"
+    ],
+    "residual": "留言的写入 API（POST /api/cards/:id/comments、PATCH .../comments/:cid）还没做，在 DASH-009。目前只有数据层函数可用，UI 仍是旧的纯文本留言框（DASH-012）。"
   },
   "comments": []
 }

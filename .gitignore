@@ -8,3 +8,6 @@ coverage/
 .cache/
 tmp/
 
+
+# 原子写的中间文件（tmp/ 是目录模式，匹配不到 DASH-001.json.tmp12345）
+tools/kanban/cards/*.tmp*
