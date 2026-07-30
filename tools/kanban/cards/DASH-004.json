@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T00:00:00+07:00",
-  "rev": 1,
+  "updatedAt": "2026-07-30T17:31:58+07:00",
+  "rev": 2,
   "epic": "看板可用性",
   "userStory": "数据完整性",
   "track": "backend",
@@ -54,7 +54,7 @@
       "修法是让数据目录可注入（KANBAN_CARDS_DIR），测试注入临时目录——从机制上不可能碰到真实数据，而不是靠小心。",
       "卡片没进 git 是第二个原因。已 commit 卡片 JSON，此后 git 就是备份。"
     ],
-    "residual": "临时目录用 mktemp -d，若 TMPDIR 被设成仓库内的路径，安全阀会挡住。"
+    "residual": "**不用跟**：临时目录用 mktemp -d 建在 $TMPDIR 下。万一 TMPDIR 被设成仓库内的路径，test.sh 开头的安全阀（case \"$CARDS\" in \"$REPO\"/*) 拒绝运行）会挡住——这条路径已经被覆盖，不需要额外处理。"
   },
   "comments": []
 }

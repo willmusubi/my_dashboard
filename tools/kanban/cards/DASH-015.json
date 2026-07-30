@@ -1,0 +1,88 @@
+{
+  "id": "DASH-015",
+  "title": "给 residual 加写法约定，重写含糊的几条",
+  "content": "目标：让 evidence.residual 的每一条都能被读的人立刻判断「现在要不要有人跟」。\n\n背景：我在 DASH-014 的 residual 里写了「未在本卡范围内处理」，然后判断\n「residual 会沉底、影响追溯」，提议把 5 条 residual 建成 backlog 卡。\n用户逐条驳回，而且是对的——那 5 条没一条是真待办。\n\n非目标：\n- 不建任何 backlog 卡（会毁掉「积压本身是信号」，见 kanban.md 的 WIP 上限）\n- 不加机制（不做「residual 非空就拦截」）。现有实践已在自发写卡号，先把规则\n  写下来，等真因为含糊出事再考虑\n\n验收标准：\n- definition-of-done.md 与 board-card.md 写明约定\n- 看板上不再有「未在本卡范围内处理」这类既不给判断也不给归宿的话\n- 逐条读 13 张卡的 residual，每条都答得出「要不要有人跟」\n\n允许改的文件：ai/process/definition-of-done.md, ai/skills/board-card.md,\ntools/kanban/cards/*.json（经 API，不手改）\n验证命令：bash scripts/check-governance.sh && npm test",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T17:33:34+07:00",
+  "rev": 7,
+  "epic": "简体化与文档",
+  "userStory": "高频入口",
+  "track": "n/a",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "ai/process/definition-of-done.md",
+    "ai/skills/board-card.md"
+  ],
+  "evidence": {
+    "commands": [
+      "grep -rl '未在本卡范围内处理' tools/kanban/cards/ → 无",
+      "逐条打印 13 张卡的 residual 首行，人工核对每条都答得出「要不要有人跟」",
+      "bash scripts/check-governance.sh → passed",
+      "npm test → 90 项断言全绿"
+    ],
+    "findings": [
+      "我两次把「注意到的异常」直接升级成「需要处理的问题」，都没先评估实际影响：上一轮夸大了「五阶段」措辞的严重性，这一轮把 5 条不是待办的 residual 说成「沉底的待办」。两次都是用户驳回才纠正的。这个模式值得记住——注意到异常和判定为问题之间，缺了一步「实际影响有多大」。",
+      "真正的问题不是 residual 会沉底。如果里面装的是「判断过、决定不做」的东西，沉底恰恰正确，它就该待在那儿备查。问题是 residual 混装了两类处置方式相反的内容，而写法上分不出来。",
+      "「移动端未适配」在 DASH-002 和 DASH-012 上各写了一次——同一件事记两遍，因为没有任何地方在收集它们。这个重复本身就是症状。",
+      "规则第一版（固定两个标签：已判断不做 / 需要后续）自己不完备，因为实际存在第三、四类形态（条件触发的操作备忘、待观察项）。改成一个判断问题「现在要不要有人跟」之后才涵盖得全。规则要从实践里提炼，不能凭空设计分类。"
+    ],
+    "residual": "**不用跟**：DASH-008/009 的 residual 写的是当时的状态（「还没做，在 DASH-009」），现在那些卡都已 done。刻意不更新——residual 是「完成那一刻」的记录，带卡号的引用天然可追溯（去看那张卡的状态即可），改写会丢失历史。"
+  },
+  "comments": [
+    {
+      "id": "c-20260730T173334-3dba",
+      "at": "2026-07-30T17:33:34+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-07-30T17:33:34+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "执行中发现规则第一版自己不完备：我给 DASH-007 标了「条件触发的操作备忘」、给 DASH-005 标了「待观察项」，这两类都不在规则的「二选一」里。已把规则从「固定两个标签」改成「必须答得出：现在要不要有人跟」，标签不强制。"
+    },
+    {
+      "id": "c-20260730T173334-e213",
+      "at": "2026-07-30T17:33:34+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-07-30T17:33:34+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "顺带发现 DASH-003 也有同样问题（「agent 走 CLI 后应统一带上」是待办但没归宿），且 cli.mjs 确实至今没带 If-Match。一并改成「已判断不做 + 重新评估的触发条件」，否则新规则立刻就有反例。"
+    }
+  ]
+}

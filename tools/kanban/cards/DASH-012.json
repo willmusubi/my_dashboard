@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": false,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T12:55:23+07:00",
-  "rev": 4,
+  "updatedAt": "2026-07-30T17:29:51+07:00",
+  "rev": 5,
   "epic": "人机决策通道",
   "userStory": "留言结构化",
   "track": "frontend",
@@ -56,7 +56,7 @@
       "superseded 的留言半透明 + 划线，明确表示「不再生效」，而不是删掉——审计轨迹要保留。",
       "textarea 的 placeholder 直接说明差别：「决策」会被注入 agent 的下一轮 context，「留言」只是记录。这比任何文档都有效。"
     ],
-    "residual": "board-card skill（告诉 agent 这套协议怎么用）还没写，放到 DASH-011 一起做，因为两者都是「让 agent 知道该读什么」。移动端仍未适配。"
+    "residual": "**需要后续 → 已完成**：board-card skill（告诉 agent 这套协议怎么用）当时放到 DASH-011 一起做，因为两者都是「让 agent 知道该读什么」。DASH-011 已 done，skill 已建立。\n**已判断不做（设计边界）**：移动端适配的判断见 DASH-002，此处不重复展开。"
   },
   "comments": [
     {

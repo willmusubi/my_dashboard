@@ -45,6 +45,17 @@ node tools/kanban/cli.mjs comment <ID> --kind blocker   --text "..."
 node tools/kanban/cli.mjs stage <ID> implementing   # 再 verify，再 done
 ```
 
+**填 `evidence.residual` 时，每一条都要让人立刻答得出「现在要不要有人跟」**
+（详见 `ai/process/definition-of-done.md`）：
+
+- **要有人跟** → 写卡号或明确的时机。
+- **不用跟** → 写理由，以及将来重新评估的触发条件（如果有）。这类沉在卡里备查
+  是对的，**不要**为它建卡。
+
+不要写「未在本卡范围内处理」——那既不给判断也不给归宿，读的人无法据此行动。
+也不要为「不用跟」的事建 backlog 卡：backlog 里堆着永远不做的卡，
+会让「积压」这个信号失效。
+
 `dependsOn` 没全部 `done` 的卡推不到 `ready` 之后——这是服务端硬拦的，
 不是建议。撞到了就说明前置任务真的没做完，去做前置，不要绕过。
 

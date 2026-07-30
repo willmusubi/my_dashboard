@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T13:22:21+07:00",
-  "rev": 5,
+  "updatedAt": "2026-07-30T17:31:58+07:00",
+  "rev": 6,
   "epic": "人机决策通道",
   "userStory": "强制注入",
   "track": "integration",
@@ -62,7 +62,7 @@
       "设计优先级刻意排成：绝不阻塞用户输入 > 不依赖 server > token 成本有界。所以任何异常都静默 exit 0，直接读文件，最多 3 张卡每类 8 条。",
       "SessionStart 在看板干净时不输出任何东西，所以安静时的成本真的是零。它是「用户说『继续』而没提卡号」那个漏洞的部分弥补。"
     ],
-    "residual": "hook 需要新会话（或 /hooks 菜单）才生效——本会话启动时 .claude/ 下还没有 settings.json，配置 watcher 可能没在监视它。刻意没做 PreToolUse 拦 git commit：没有可靠的 card↔paths 映射，误拦是让人直接删掉 hook 文件的最快方式。"
+    "residual": "**要有人跟（一次性）**：hook 需要开一个新会话、或打开一次 /hooks 菜单才生效——本会话启动时 .claude/ 下还没有 settings.json，配置 watcher 没在监视那个目录。做过一次之后就不用再管。\n**不用跟**：刻意没做 PreToolUse 拦 git commit。没有可靠的 card↔paths 映射，误拦是让人直接删掉 hook 文件的最快方式。"
   },
   "comments": [
     {

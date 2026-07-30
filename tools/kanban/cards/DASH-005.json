@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": false,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T00:00:00+07:00",
-  "rev": 1,
+  "updatedAt": "2026-07-30T17:29:51+07:00",
+  "rev": 2,
   "epic": "简体化与文档",
   "userStory": "高频入口",
   "track": "n/a",
@@ -53,7 +53,7 @@
       "禁用清单是关键发现：gstack 的 ship / land-and-deploy / autoplan 设计目标是快速自动决策（autoplan 明写 'with auto-decisions'），是本项目治理模型的精确反面，跑一次就静默绕过全部人工关卡。",
       "本机 140 个全局 skill 与本项目 8 个零命名冲突，所以没有优先级仲裁——Claude 只能靠描述匹配，而全局的更多、更触发导向，通常会赢。只能靠每轮都读的 CLAUDE.md 显式压制。"
     ],
-    "residual": "描述匹配本质是概率性的，CLAUDE.md 的对照表靠指令遵守。若发现仍被全局 skill 抢走，需要更强手段。"
+    "residual": "**待观察项（归属 Phase 4 观察期）**：描述匹配本质是概率性的，CLAUDE.md 的对照表靠指令遵守，这是个还没验证的假设。跑真任务时留意本项目的 skill 有没有被全局 skill 抢走；真的发生了再考虑更强手段（例如给冲突的全局 skill 加 skillOverrides）。"
   },
   "comments": []
 }

@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T00:00:00+07:00",
-  "rev": 1,
+  "updatedAt": "2026-07-30T17:29:51+07:00",
+  "rev": 2,
   "epic": "看板可用性",
   "userStory": "数据完整性",
   "track": "fullstack",
@@ -54,7 +54,7 @@
       "agent 写的 content 和它勾的 security gate 在人的操作后完整保留，人的 readiness 勾选叠加上去（rev 3），是叠加不是覆盖。",
       "拖拽后必须用服务端回传的版本更新本地 rev，否则下一次拖拽会带着旧 rev 撞 409。"
     ],
-    "residual": "不带 If-Match 的请求仍然放行（保持对 curl 和旧客户端的兼容）。agent 走 CLI 后应统一带上。"
+    "residual": "**已判断不做**：不带 If-Match 的请求仍然放行——包括 cli.mjs 的写入路径（viaHttp 只带 X-Kanban-Agent，不带 If-Match）。这是为了保持对 curl 与手写脚本的兼容；单人使用下，强制 If-Match 带来的假冲突代价大于收益。触发重新评估的条件：开始多人协作，或观察到 agent 的写入被覆盖。"
   },
   "comments": []
 }
