@@ -1,0 +1,54 @@
+{
+  "id": "DASH-012",
+  "title": "UI：留言类型选择器 + 状态 chip + 待处理徽章",
+  "content": "目标：让人写一条决策的成本足够低，否则通道建好了也没人用。\n\n设计约束：人只多碰一个控件——三按钮分段选择器 [留言][决策][问题]，默认「留言」\n（懒惰路径 = 无害路径）。answer/progress/evidence/blocker 是 agent 专用，不出现为按钮。\n\n验收标准：\n- 每条留言显示状态 chip：待处理 / 已确认 / 已完成 / 已取代；已确认带时间\n- 卡面显示「💬 N 待处理」徽章（有人写的 open 留言时）\n- 已有 open decision 上有「取代」链接，预填 supersedes\n- 人和 agent 的留言有身份色区分\n\n允许改的文件：tools/kanban/index.html, ai/skills/board-card.md（新建）,\n.claude/skills/board-card/SKILL.md（新建）, scripts/check-governance.sh\n验证命令：浏览器实测完整回路（写决策 → agent ack → 看到已确认）",
+  "stage": "backlog",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": false,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "人机决策通道",
+  "userStory": "留言结构化",
+  "track": "frontend",
+  "dependsOn": [
+    "DASH-011"
+  ],
+  "order": 4,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": false,
+    "scope_defined": true,
+    "verification_contract": false,
+    "human_approval_recorded": false
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": false
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "tools/kanban/index.html"
+  ],
+  "evidence": {
+    "commands": [],
+    "findings": [],
+    "residual": ""
+  },
+  "comments": []
+}

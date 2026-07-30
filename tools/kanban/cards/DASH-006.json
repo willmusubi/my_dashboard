@@ -1,0 +1,61 @@
+{
+  "id": "DASH-006",
+  "title": "核心流程文档简体化，kanban.md 按工具真实形态重写",
+  "content": "目标：ai/process/ 下高读取频率的文档全部简体，且不与代码矛盾。\n\n背景：上游 kanban.md 定义 12 个栏位而工具只有 6 条车道，两者从无对应关系\n（tools/kanban/README.md:17 自己也承认）。一份和工具矛盾的政策文档只会持续误导 agent。\n\n验收标准：workflow / DoR / DoD / context-protocol 全文简体；kanban.md 描述真实的\n6 条车道，并说明治理状态由 readiness(7) + gates(6) 承载。\n\n允许改的文件：ai/process/*.md\n验证命令：bash scripts/check-governance.sh",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": false,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "简体化与文档",
+  "userStory": "高频入口",
+  "track": "n/a",
+  "dependsOn": [],
+  "order": 6,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": "commit e05381a"
+  },
+  "refs": [
+    "ai/process/workflow.md",
+    "ai/process/kanban.md",
+    "ai/process/definition-of-ready.md",
+    "ai/process/definition-of-done.md",
+    "ai/process/context-protocol.md"
+  ],
+  "evidence": {
+    "commands": [
+      "bash scripts/check-governance.sh → passed"
+    ],
+    "findings": [
+      "重写 kanban.md 时补上了上游从没说清楚的一层映射：治理状态不靠看板栏位表达，靠卡片上的 readiness(7) 和 gates(6) 字段表达——这正是那两组字段存在的理由。文档里给了逐项对应表。",
+      "真实数据佐证这个映射：那块跑了 5 天的看板上 ready 积压 31 张、verify 只有 1 张，而 readiness 33/67 有勾，说明人确实在用这些字段追踪治理状态。"
+    ],
+    "residual": ""
+  },
+  "comments": []
+}

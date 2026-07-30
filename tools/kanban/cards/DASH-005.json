@@ -1,0 +1,59 @@
+{
+  "id": "DASH-005",
+  "title": "8 个 skill description 改写为简体触发式 + 重写两个入口文件",
+  "content": "目标：让 skill 能被简体提问正确触发；让每轮载入的入口文件反映本 fork 的实际约定。\n\n背景：description 是 Claude Code 唯一用来匹配 prompt 的文本。上游是繁体，\n且写成「描述做什么」而不是「什么时候用」。\n\n验收标准：8 个 description 为简体触发式并带项目前缀；CLAUDE.md 含本项目 skill\n优先级对照表与禁用清单；AGENTS.md 含看板协议。check-governance 通过。\n\n允许改的文件：.claude/skills/*/SKILL.md, CLAUDE.md, AGENTS.md\n验证命令：bash scripts/check-governance.sh",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": false,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "简体化与文档",
+  "userStory": "高频入口",
+  "track": "n/a",
+  "dependsOn": [],
+  "order": 5,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": "commit a675a2c"
+  },
+  "refs": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".claude/skills"
+  ],
+  "evidence": {
+    "commands": [
+      "bash scripts/check-governance.sh → passed"
+    ],
+    "findings": [
+      "禁用清单是关键发现：gstack 的 ship / land-and-deploy / autoplan 设计目标是快速自动决策（autoplan 明写 'with auto-decisions'），是本项目治理模型的精确反面，跑一次就静默绕过全部人工关卡。",
+      "本机 140 个全局 skill 与本项目 8 个零命名冲突，所以没有优先级仲裁——Claude 只能靠描述匹配，而全局的更多、更触发导向，通常会赢。只能靠每轮都读的 CLAUDE.md 显式压制。"
+    ],
+    "residual": "描述匹配本质是概率性的，CLAUDE.md 的对照表靠指令遵守。若发现仍被全局 skill 抢走，需要更强手段。"
+  },
+  "comments": []
+}

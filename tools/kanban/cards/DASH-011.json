@@ -1,0 +1,52 @@
+{
+  "id": "DASH-011",
+  "title": "hook：让决策一定进入 context，不靠 agent 自觉",
+  "content": "目标：不依赖模型判断——人写的决策必须进入下一轮的 context。\n\n背景：整个上游仓库里，ai/process/、ai/skills/、AGENTS.md、CLAUDE.md 中\n「留言 / comment」出现 0 次。通道存在，一根线都没接。而只在 CLAUDE.md 里加一条\n规则等于上游已经做的事，实测零强制力。\n\n⚠️ 这是本项目第一个可执行配置：hook 会在每次 prompt 提交时以完整权限跑一个本地\n脚本。装进 git 追踪、可审阅的 .claude/settings.json（不是 settings.local.json），\n脚本只 import node:fs / node:path，任何错误静默 exit 0 绝不挡输入。删掉文件即停用。\n\n验收标准：\n- UserPromptSubmit：prompt 里出现 DASH-### 就注入该卡生效中的人工决策与未答提问\n- 只注入 authorKind=human 且 status ∈ {open, acked}；superseded 结构性排除\n- 直接读文件，看板没开也能工作\n- SessionStart：报告哪些卡在等人；看板干净时不输出任何东西\n- 任何异常都静默 exit 0，绝不阻塞用户输入\n\n允许改的文件：tools/kanban/hooks/*.mjs（新建）, .claude/settings.json（新建）\n验证命令：手动喂 stdin JSON 跑 hook 脚本 + 新会话实测注入",
+  "stage": "backlog",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "人机决策通道",
+  "userStory": "强制注入",
+  "track": "integration",
+  "dependsOn": [
+    "DASH-010"
+  ],
+  "order": 3,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": false
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": false
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [],
+    "findings": [],
+    "residual": ""
+  },
+  "comments": []
+}

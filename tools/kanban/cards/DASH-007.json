@@ -1,0 +1,64 @@
+{
+  "id": "DASH-007",
+  "title": "剩余约 1200 行繁体文档转简体 + 技术术语本地化",
+  "content": "目标：ai/templates、ai/checklists、ai/skills 正本、ai/context、\ntools/kanban/README.md、server.mjs 注释与错误字符串全部转简体，并把台湾技术\n用词本地化。\n\n非目标：不改内容语义（project-kickoff.md 的 Epic 0 部分已在拆引信时改写过）。\n\n验收标准：GB2312 编码复查找不到非简体汉字；check-governance 通过；npm test 全绿。\n\n允许改的文件：ai/**, tools/kanban/README.md, tools/kanban/server.mjs, tools/kanban/index.html\n验证命令：GB2312 复查 + bash scripts/check-governance.sh + npm test",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": false,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "简体化与文档",
+  "userStory": "低频文档",
+  "track": "n/a",
+  "dependsOn": [],
+  "order": 7,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": "commit e4096f1"
+  },
+  "refs": [
+    "ai/",
+    "tools/kanban/README.md"
+  ],
+  "evidence": {
+    "commands": [
+      "python3 t2s.py（映射表由仓库实际出现的 1105 个汉字逐字筛出，不是通用词典）",
+      "GB2312 编码复查 → 全部文件已无非简体汉字",
+      "npm test → 通过 15，失败 0",
+      "bash scripts/check-governance.sh → passed",
+      "node --check server.mjs / index.html 内嵌 JS → 均 OK"
+    ],
+    "findings": [
+      "第一轮复查方法论是错的：我用和映射表同一批字符做残留检查，于是漏掉的字既不在映射表、也不在复查集合里，检查必然通过。改用 GB2312 编码测试作独立判据（纯简体字符集，繁体专用字编不进去），立刻找出 12 个漏字：務寫關過測問項試還東網沒。",
+      "一对多的字必须词组优先于单字：顯著→显著 而 接著→接着；關係→关系 而 係數→系数；裡面→里面。抽查「着/里/系」全部正确。",
+      "术语本地化比字形转换更影响可读性。修正：螢幕→屏幕（纯字形转换会得出「荧幕」）、資料→数据、元件→组件、專案→项目、檔案→文件、使用者→用户、陣列→数组、模組→模块、欄位→字段。",
+      "术语替换有两处过头，都已修：（1）「检查清单」被改成「检查列表」——清单在简体是标准说法，回退；（2）kanban.md 里指看板「列」的地方被改成「字段」，而同一文件里「字段」另指卡片的数据字段，这是真语义错误，已改回「栏位（column）」。"
+    ],
+    "residual": "映射表是针对本仓库这 1105 个汉字筛出的，不是通用繁简词典；将来引入新繁体内容时需重跑 GB2312 复查。台湾语气类用词（非技术术语）未逐一审阅。"
+  },
+  "comments": []
+}

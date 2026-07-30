@@ -1,0 +1,50 @@
+{
+  "id": "DASH-013",
+  "title": "重写安全版分发脚本",
+  "content": "目标：my_dashboard 是改造实验室 + 分发源，改好的东西要能安全地装到其他项目。\n\n背景：上游 install-into-project.sh 已在 Phase 0 删除——它对\nai/{process,templates,checklists,skills,examples} 和 .claude/{skills,agents}\n做无条件 cp -R 覆盖，无备份、无日志、无 dry-run、无卸载。定制过的文件一跑就没。\n\n验收标准：\n- --dry-run 预演，逐行报告将覆盖 / 跳过 / 新建什么\n- 覆盖前备份到 .monstrare-backup-<时间戳>/\n- 区分 kit-owned（刷新）与 project-owned（永不碰：cards/、epics.json、\n  ai/context/、ai/artifacts/）\n- 目标项目可自定 ID_PREFIX 与端口\n- 拒绝 $HOME 作为目标；检查目标 .claude 是否为符号链接（cp -R 会跟随，写进全局目录）\n\n允许改的文件：scripts/install-into-project.sh（新建）\n验证命令：对一个临时目录跑 --dry-run 再真跑，比对结果",
+  "stage": "backlog",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "分发能力",
+  "userStory": "安全分发",
+  "track": "integration",
+  "dependsOn": [],
+  "order": 5,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": false
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": false
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [],
+    "findings": [],
+    "residual": ""
+  },
+  "comments": []
+}

@@ -1,0 +1,59 @@
+{
+  "id": "DASH-002",
+  "title": "modal 从只能编辑 2 个字段变成能编辑全部 20 个",
+  "content": "目标：治理模型需要的字段都能在界面上改。\n\n背景：上游 modal 只有 #field-title 和 #field-content 两个可编辑控件，\nreadiness/gates/links/evidence 连显示都没有——但文档声称能编辑\n（README.md:209、tools/kanban/README.md:42）。那个 UI 从未被建造。\n\n非目标：不做筛选/搜索/排序（等原型评审定了交互模型再说）。\n\n验收标准：readiness 7 项、gates 6 项、links 6 项、risk/stage/track/owner/agent/\nepic/userStory/dependsOn/refs/evidence 都能改并落盘；改一个勾不会跳回顶部。\n\n允许改的文件：tools/kanban/index.html\n验证命令：浏览器实测 + 查 cards/*.json",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": false,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "看板可用性",
+  "userStory": "字段可编辑",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 2,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": true,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": "commit 11a47d6"
+  },
+  "refs": [
+    "tools/kanban/index.html"
+  ],
+  "evidence": {
+    "commands": [
+      "浏览器实测：勾 readiness ×2、gates ×1、填 links.featureSpec、改 stage 换车道",
+      "查 cards/DASH-001.json 确认全部落盘且字段顺序保持 git-diff 友好"
+    ],
+    "findings": [
+      "改成 data-field（值的路径）+ data-kind（怎么解析）驱动的单一 handler，加字段不用再动逻辑。上游是每个字段一个 if 分支，所以只撑得住两个。",
+      "字段优先级不是猜的：从 three_kingdoms_traveler 那块跑了 5 天的看板拉了 67 张真实卡片统计——links 47/67、readiness 33/67、refs 33/67、gates 20/67，全部高频使用，且全部只能靠手改 JSON。",
+      "实测 rev 从 1 涨到 6，n/N 完成度计数实时更新，滚动位置与折叠区状态都保住了。"
+    ],
+    "residual": "stage 下拉在 macOS 原生 select 上用浏览器自动化按键不稳（人工点选正常）。移动端未适配：6 车道 × 232px ≈ 1400px，且 HTML5 拖拽在触屏上根本不触发。"
+  },
+  "comments": []
+}

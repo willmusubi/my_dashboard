@@ -1,0 +1,63 @@
+{
+  "id": "DASH-001",
+  "title": "修 6 个静默损坏数据的 bug",
+  "content": "目标：让任何看板操作都不会静默损坏或丢失卡片数据。\n\n非目标：不重构 server.mjs 架构（Phase 3 抽 card-store.mjs 时再做）。\n\n验收标准：\n- 删掉被依赖的卡后，两条车道仍可拖拽\n- 一个坏 JSON 文件只影响它自己，其余卡片正常显示且能被指名报出\n- 删掉编号最大的卡后新建不复用 ID\n- 删掉车道中间的卡后新建不撞 order\n\n允许改的文件：tools/kanban/server.mjs\n验证命令：npm test",
+  "stage": "done",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "看板可用性",
+  "userStory": "数据完整性",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": true,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "tools/kanban/test.sh",
+    "pr": "commit 11a47d6"
+  },
+  "refs": [
+    "tools/kanban/server.mjs",
+    "tools/kanban/test.sh"
+  ],
+  "evidence": {
+    "commands": [
+      "npm test → 通过 15，失败 0",
+      "node --check tools/kanban/server.mjs",
+      "bash scripts/check-governance.sh → passed"
+    ],
+    "findings": [
+      "悬空 dependsOn 是最严重的一个，因为它是连锁的：checkDependsOn 硬拒任何引用不存在卡片的 PUT + modal 没有 dependsOn 编辑器 + commitDrop 走整批拒绝的 handlePutBulk，净效果是两条车道彻底拖不动，只能手改 JSON 才能救。而 tools/kanban/README.md:108 写的是「不会挡任何操作」，正好说反。",
+      "坏 JSON 文件被顶层 handler 的 SyntaxError 分支截胡，对一个没有 body 的 GET 返回 400「body 不是合法 JSON」，错因、范围、文件名三样全错，而且整块看板会变空。",
+      "ID 复用：maxNum 只看磁盘现存文件，删掉编号最大的卡再建新卡会拿到同一个 id，其他卡的 dependsOn 静默指向一张毫不相干的新卡。",
+      "order 用 inColumn.length + 1 会撞号，排序退化到 id.localeCompare 后顺序变随机，且每次拖拽都重写文件制造 git 噪音。",
+      "TRACKS 缺 'fullstack'：非法枚举值会让 handlePutBulk 整批拒绝。这在 three_kingdoms_traveler 那块看板上已真实发生（TKT-066）。"
+    ],
+    "residual": "handlePutBulk 跨文件非原子：先校验全部再写，所以校验是全有全无的；但若第 2 张卡写失败，文件是半写状态。对拖拽重排来说是排序错乱而非数据丢失，已记录不另建机制。"
+  },
+  "comments": []
+}

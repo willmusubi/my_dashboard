@@ -3,23 +3,29 @@
 #
 #   bash tools/kanban/test.sh        （或 npm test）
 #
-# 会在 cards/ 里建临时卡片并在结束时清空，所以不要在有真实数据时跑。
+# 测试跑在一个临时目录里（KANBAN_CARDS_DIR），**绝不碰真实的 cards/**。
+# 上一版直接 rm 真实 cards/，真删掉过 12 张卡——那种测试比没有测试更糟。
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CARDS="$REPO/tools/kanban/cards"
+TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/kanban-test.XXXXXX")"
+CARDS="$TMPROOT/cards"
+mkdir -p "$CARDS"
 PORT=${KANBAN_TEST_PORT:-4431}
 BASE="http://127.0.0.1:$PORT"
 PASS=0; FAIL=0
+
+# 安全阀：万一 mktemp 出意外指到仓库里，立刻停，不要往下删任何东西。
+case "$CARDS" in
+  "$REPO"/*) echo "拒绝运行：测试数据目录落在仓库内（$CARDS）"; exit 1 ;;
+esac
 
 ok(){ echo "  ✅ $1"; PASS=$((PASS+1)); }
 no(){ echo "  ❌ $1"; echo "     got: $2"; FAIL=$((FAIL+1)); }
 chk(){ [ "$2" = "$3" ] && ok "$1" || no "$1" "expected [$3] got [$2]"; }
 
-# 干净起步
-rm -f "$CARDS"/*.json "$CARDS"/.seq
-KANBAN_PORT=$PORT node "$REPO/tools/kanban/server.mjs" >/tmp/t1.log 2>&1 &
+KANBAN_PORT=$PORT KANBAN_CARDS_DIR="$CARDS" node "$REPO/tools/kanban/server.mjs" >/tmp/t1.log 2>&1 &
 SRV=$!
-trap 'kill $SRV 2>/dev/null; wait $SRV 2>/dev/null; rm -f "$CARDS"/*.json "$CARDS"/.seq' EXIT
+trap 'kill $SRV 2>/dev/null; wait $SRV 2>/dev/null; rm -rf "$TMPROOT"' EXIT
 curl -sf --retry 15 --retry-connrefused --retry-delay 1 "$BASE/api/cards" >/dev/null || { echo "server 起不来"; cat /tmp/t1.log; exit 1; }
 
 post(){ curl -sf -X POST "$BASE/api/cards" -H 'Content-Type: application/json' -d "$1"; }

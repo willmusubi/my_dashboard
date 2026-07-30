@@ -1,0 +1,52 @@
+{
+  "id": "DASH-010",
+  "title": "cli.mjs：agent 的读写入口，server 关着也能用",
+  "content": "目标：agent 永远不直接改 JSON，只调命令动词。\n\n这张卡是整个设计的枢纽：有了 CLI，agent 的读路径是预渲染纯文本、写路径是命令，\n于是「JSON 对 agent 不友好」这个理由消失，不必换成 markdown 真相源。\n\n验收标准：\n- show / open / ack / resolve / comment / ask / answer / stage 八个子命令\n- 端口关闭时回退到直接文件 I/O。人不会一直开着看板；agent 撞 ECONNREFUSED 会\n  放弃或开始手改 JSON，那正是要消灭的失败模式\n- 身份解析不出来就报错退出，不静默以人的身份发言\n- show 的输出格式与 hook 注入的完全一致\n\n允许改的文件：tools/kanban/cli.mjs（新建）, tools/kanban/card-store.mjs\n验证命令：npm test + 关掉 server 跑一遍 cli.mjs show",
+  "stage": "backlog",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": false,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "人机决策通道",
+  "userStory": "agent 读写通道",
+  "track": "backend",
+  "dependsOn": [
+    "DASH-009"
+  ],
+  "order": 2,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": false
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": false
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [],
+    "findings": [],
+    "residual": ""
+  },
+  "comments": []
+}

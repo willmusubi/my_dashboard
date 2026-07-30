@@ -1,0 +1,52 @@
+{
+  "id": "DASH-008",
+  "title": "类型化 comment schema + 原子写",
+  "content": "目标：让一条留言能被 agent 分辨出「这是必须遵守的决策」还是「随口一说」，\n并且能标记已确认 / 已完成 / 已取代。\n\n背景：现在 comments 只有 {name, time, text} 三个纯文本字段，time 是\n\"07-03 13:58\"（无年份无时区，无法比较先后）。而 three_kingdoms_traveler 那块\n看板上 11 条留言全是 claude 写的，人一条都没写过——人的决策是被 agent 转述的\n（「用户拍板方案一」）。这说明现在的留言写了也没用，所以人干脆不写。\n\n非目标：不做 UI（DASH-012）。不改 JSON 作为真相源这件事。\n\n验收标准：\n- 新增字段 id / at(ISO 带时区) / author / authorKind / kind / status / statusAt / re / supersedes\n- authorKind=agent 永不允许 kind=decision（API 403 + validateCard 兜底）\n- 留言文本不可变，只 status 可改；修正靠新留言 + supersedes\n- 未知字段返回 400，而不是被 writeCard 静默丢弃\n- 写入改为 tmp + rename 原子写；.gitignore 加 cards/*.tmp*（现有的 tmp/ 是目录模式，匹配不到）\n- 旧格式留言首次读取时归一化为 kind=note / status=done，不得回溯升格为 decision\n\n允许改的文件：tools/kanban/card-store.mjs（新建）, tools/kanban/server.mjs, .gitignore\n验证命令：npm test",
+  "stage": "ready",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "人机决策通道",
+  "userStory": "留言结构化",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": false
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "tools/kanban/server.mjs"
+  ],
+  "evidence": {
+    "commands": [],
+    "findings": [],
+    "residual": ""
+  },
+  "comments": []
+}

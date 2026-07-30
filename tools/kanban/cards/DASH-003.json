@@ -1,0 +1,60 @@
+{
+  "id": "DASH-003",
+  "title": "乐观锁：rev + If-Match，挡住人覆盖 agent 的改动",
+  "content": "目标：人和 agent 并发写同一张卡时不静默丢数据。\n\n背景：handlePutOne/handlePutBulk 是无条件整对象覆盖。开着看板一小时，Claude\n期间改了几张卡，你拖动一张，commitDrop 就把一小时前的内存副本批量写回，\nClaude 的改动被静默还原且无任何提示。单人时永不发生；Claude 当第二个\n写入方之后，是每周一次的事故。\n\n验收标准：过期写入返回 409 且说明版本差异；agent 的改动完整保留；\n重载后重试成功，人的改动叠加而非覆盖。\n\n允许改的文件：tools/kanban/server.mjs, tools/kanban/index.html\n验证命令：npm test（4 项乐观锁断言）+ 浏览器端到端",
+  "stage": "done",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "看板可用性",
+  "userStory": "数据完整性",
+  "track": "fullstack",
+  "dependsOn": [],
+  "order": 3,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": true,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "tools/kanban/test.sh",
+    "pr": "commit 11a47d6"
+  },
+  "refs": [
+    "tools/kanban/server.mjs",
+    "tools/kanban/index.html"
+  ],
+  "evidence": {
+    "commands": [
+      "npm test → If-Match 匹配 200 / 过期 409 / 整批过期 409 / 409 带真实 rev，4 项全绿",
+      "浏览器端到端：agent 后台 PUT → 人在 UI 勾选 → 409 → 自动重载 → 重试成功"
+    ],
+    "findings": [
+      "实测 toast 文案：「DASH-002 已被改动（你手上是 rev 1，磁盘上是 rev 2）。请重新载入后重做这次修改。」",
+      "agent 写的 content 和它勾的 security gate 在人的操作后完整保留，人的 readiness 勾选叠加上去（rev 3），是叠加不是覆盖。",
+      "拖拽后必须用服务端回传的版本更新本地 rev，否则下一次拖拽会带着旧 rev 撞 409。"
+    ],
+    "residual": "不带 If-Match 的请求仍然放行（保持对 curl 和旧客户端的兼容）。agent 走 CLI 后应统一带上。"
+  },
+  "comments": []
+}

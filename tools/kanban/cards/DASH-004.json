@@ -1,0 +1,60 @@
+{
+  "id": "DASH-004",
+  "title": "测试隔离：回归测试不得碰真实卡片",
+  "content": "目标：跑 npm test 绝不可能损坏真实数据。\n\n背景：这张卡是 dogfooding 抓出来的。上一版 test.sh 直接对真实的\ntools/kanban/cards/ 做 rm -f *.json，我在建好 12 张真卡之后又跑了一次测试，\n把它们全删了（卡片当时还没 commit，所以 git 里也没有）。\n一个会删用户数据的测试，比没有测试更糟。\n\n验收标准：\n- server 支持 KANBAN_CARDS_DIR 覆写数据目录\n- test.sh 跑在 mktemp 出来的临时目录里，退出时只删那个临时目录\n- 有安全阀：万一临时目录落在仓库内就拒绝运行\n- 用哨兵文件验证：跑完测试后真实 cards/ 里的文件必须还在\n\n允许改的文件：tools/kanban/server.mjs, tools/kanban/test.sh\n验证命令：放哨兵文件 → npm test → 确认哨兵还在",
+  "stage": "done",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-30",
+  "updatedAt": "2026-07-30T00:00:00+07:00",
+  "rev": 1,
+  "epic": "看板可用性",
+  "userStory": "数据完整性",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 4,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": true,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "tools/kanban/server.mjs",
+    "tools/kanban/test.sh"
+  ],
+  "evidence": {
+    "commands": [
+      "在真实 cards/ 放 SENTINEL.json → bash tools/kanban/test.sh → 15/15 通过 → 哨兵文件仍存在",
+      "case \"$CARDS\" in \"$REPO\"/*) 拒绝运行 —— 安全阀已加"
+    ],
+    "findings": [
+      "根因是测试和生产共用同一个数据目录，靠「记得别在有数据时跑」这种纪律来保护。纪律不是机制，迟早会踩。",
+      "修法是让数据目录可注入（KANBAN_CARDS_DIR），测试注入临时目录——从机制上不可能碰到真实数据，而不是靠小心。",
+      "卡片没进 git 是第二个原因。已 commit 卡片 JSON，此后 git 就是备份。"
+    ],
+    "residual": "临时目录用 mktemp -d，若 TMPDIR 被设成仓库内的路径，安全阀会挡住。"
+  },
+  "comments": []
+}

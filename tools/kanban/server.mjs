@@ -15,7 +15,11 @@ const PORT = Number(process.env.KANBAN_PORT) || 4430;
 
 const ROOT =
   import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-const CARDS_DIR = path.join(ROOT, "cards");
+// 可用 KANBAN_CARDS_DIR 覆写数据目录。回归测试靠它跑在临时目录里，从机制上
+// 不可能碰到真实卡片——上一版 test.sh 直接 rm 真实的 cards/，真删掉过 12 张卡。
+const CARDS_DIR = process.env.KANBAN_CARDS_DIR
+  ? path.resolve(process.env.KANBAN_CARDS_DIR)
+  : path.join(ROOT, "cards");
 const INDEX_HTML = path.join(ROOT, "index.html");
 const EPICS_JSON = path.join(ROOT, "epics.json");
 // 「曾经发出过的最大编号」。git 追踪，跨机器有效。没有它的话，删掉编号最大的
