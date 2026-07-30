@@ -34,20 +34,37 @@ function die(msg, code = 1) {
   process.exit(code);
 }
 
+// 这些 flag 一定带值。必须显式列出——否则 `--text "--dry-run 实测…"` 里的值
+// 因为以 `--` 开头，会被当成下一个 flag，留言内容整条丢掉（真踩过）。
+const VALUE_FLAGS = new Set(["kind", "text", "re", "agent"]);
+
 function parseArgs(argv) {
   const positional = [];
   const flags = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a.startsWith("--")) {
-      const key = a.slice(2);
-      const next = argv[i + 1];
-      if (next === undefined || next.startsWith("--")) flags[key] = true;
-      else {
-        flags[key] = next;
-        i++;
-      }
-    } else positional.push(a);
+    if (!a.startsWith("--")) {
+      positional.push(a);
+      continue;
+    }
+    // 支持 --key=value，值里可以随便带 -- 开头的内容
+    const eq = a.indexOf("=");
+    if (eq > 2) {
+      flags[a.slice(2, eq)] = a.slice(eq + 1);
+      continue;
+    }
+    const key = a.slice(2);
+    const next = argv[i + 1];
+    if (VALUE_FLAGS.has(key)) {
+      if (next === undefined) die("--" + key + " 需要一个值");
+      flags[key] = next;
+      i++;
+    } else if (next === undefined || next.startsWith("--")) {
+      flags[key] = true;
+    } else {
+      flags[key] = next;
+      i++;
+    }
   }
   return { positional, flags };
 }

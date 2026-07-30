@@ -16,6 +16,56 @@ KANBAN_PORT=4430 npm run kanban    # 换个端口
 零依赖，无需 `npm install`。数据是 `tools/kanban/cards/*.json`，一卡一个文件，git 追踪。
 没有保存按钮，改动即时落盘；要撤销就用 `git checkout`。
 
+回归测试：`npm test`（90 项断言，跑在临时目录，**不会碰真实卡片**）
+治理自检：`npm run check`
+
+## 人 ↔ AI 决策通道
+
+这是本 fork 相对上游最大的增量。上游有 `comments` 字段，但没有任何机制让 agent
+读到它——`ai/process/`、`ai/skills/`、`AGENTS.md`、`CLAUDE.md` 里「留言/comment」
+出现 **0 次**。
+
+**你这边**：打开卡片，选【决策】写下你的决定。它会显示「待处理」，卡面出现
+`💬 N 待处理`。agent 确认后变成「**已确认 · 14:02**」——你能直接看到它有没有读到。
+改主意就点「取代这条决策」，旧的变「已取代」并划线（保留审计轨迹），
+并且**结构性地不再进入 agent 的 context**。
+
+**agent 那边**（`tools/kanban/cli.mjs`，8 个子命令）：
+
+```bash
+node tools/kanban/cli.mjs show <ID>          # 读卡，含生效中的人工决策
+node tools/kanban/cli.mjs ack  <ID> <留言id>  # 确认，在看板上留下时间戳
+node tools/kanban/cli.mjs comment <ID> --kind progress|evidence --text "..."
+node tools/kanban/cli.mjs ask  <ID> --text "..."   # 提问后停下来等人
+node tools/kanban/cli.mjs open               # 哪些卡在等人 / 等 agent
+```
+
+server 关着也能用（自动回退到直接读写文件）。
+
+**三条载荷规则**：
+
+1. **只有人能下决策。** agent 写 `kind=decision` 会被 403 拒绝——它只能提问然后停下。
+   通道在信息上双向，在权威上单向。
+2. **留言文本不可变**，只有状态可改。修正靠发新留言 + `supersedes`。
+3. **不靠 agent 自觉**：`.claude/settings.json` 里的 UserPromptSubmit hook 会在你
+   提到卡号时自动把生效中的决策注入 context。⚠️ 这是本项目唯一的可执行配置，
+   每次 prompt 以你的完整权限跑一个本地脚本；它只 import `node:fs`/`node:path`，
+   任何异常静默退出绝不挡你的输入，**删掉那个文件即停用**。
+
+hook 只保证「送达」，不保证「遵守」。遵守靠它必须 `ack` 留下痕迹——于是不遵守
+在看板上一眼可见。协议细节见 `ai/skills/board-card.md`。
+
+## 分发到其他项目
+
+```bash
+scripts/install-into-project.sh --dry-run --prefix TKT --port 4431 /path/to/project
+```
+
+先用 `--dry-run` 预演。kit 文件每次刷新（覆盖前备份到 `.kanban-backup-<时间戳>/`），
+而 `CLAUDE.md`、`ai/context/`、`ai/artifacts/`、`epics.json`、`cards/` 属于目标项目，
+**存在就永不碰**。会拒绝 `$HOME`、拒绝本仓库自己、拒绝目标 `.claude` 是符号链接
+（`cp -R` 会跟随它写进全局 `~/.claude`）。
+
 ## 流程
 
 每个非小型变更走 `ai/process/workflow.md` 定义的这些阶段：

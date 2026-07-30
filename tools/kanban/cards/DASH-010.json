@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": false,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T13:22:21+07:00",
-  "rev": 7,
+  "updatedAt": "2026-07-30T13:34:50+07:00",
+  "rev": 8,
   "epic": "人机决策通道",
   "userStory": "agent 读写通道",
   "track": "backend",
@@ -96,6 +96,18 @@
       "re": null,
       "supersedes": [],
       "text": "agent 下决策的守卫实测：cli.mjs comment --kind decision 直接被拒绝并退出码 1，提示改用 ask。这一层在 CLI、API、validateCard 三处都有。"
+    },
+    {
+      "id": "c-20260730T133450-fdf9",
+      "at": "2026-07-30T13:34:50+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-07-30T13:34:50+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "CLI 参数解析 bug：--text 的值以 -- 开头时会被当成 flag，整条留言内容丢失。已修（VALUE_FLAGS 白名单 + 支持 --key=value）。这是 dogfooding 抓出的第二个真 bug。"
     }
   ]
 }

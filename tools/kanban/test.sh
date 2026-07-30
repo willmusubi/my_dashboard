@@ -161,6 +161,47 @@ chk "留言没被 PATCH 影响" "$(jq_ "len(d['comments'])" </tmp/p.json)" "2"
 chk "标题没被清空" "$(jq_ "d['title']" </tmp/p.json)" "改个标题"
 
 
+echo "── CLI ──"
+CLI="node $REPO/tools/kanban/cli.mjs"
+export KANBAN_CARDS_DIR="$CARDS" KANBAN_PORT=$PORT KANBAN_AGENT=test-agent
+CC=$(post '{"title":"CLI 测试","stage":"backlog"}' | jq_ "d['id']")
+# 关键回归：--text 的值以 -- 开头时，不能被当成下一个 flag（会整条丢掉留言）
+$CLI comment "$CC" --kind evidence --text "--dry-run 实测通过" >/dev/null 2>&1
+chk "--text 的值以 -- 开头仍能写入" \
+  "$(curl -s "$BASE/api/cards" | jq_ "[x for x in d if x['id']=='$CC'][0]['comments'][0]['text']")" "--dry-run 实测通过"
+# --key=value 形式
+$CLI comment "$CC" --kind=note --text=--也是以横线开头 >/dev/null 2>&1
+chk "--key=value 形式可用" \
+  "$(curl -s "$BASE/api/cards" | jq_ "[x for x in d if x['id']=='$CC'][0]['comments'][1]['text']")" "--也是以横线开头"
+# 缺值要报错，不能静默当成 boolean
+$CLI comment "$CC" --kind evidence --text >/dev/null 2>&1
+chk "--text 缺值 → 退出码 1" "$?" "1"
+# agent 不得下决策（CLI 层就拦住）
+$CLI comment "$CC" --kind decision --text "我说了算" >/dev/null 2>&1
+chk "CLI 拦住 agent 下决策 → 退出码 1" "$?" "1"
+# ask / ack / stage
+$CLI ask "$CC" --text "这个要问人" >/dev/null 2>&1
+chk "ask 写入 question" \
+  "$(curl -s "$BASE/api/cards" | jq_ "[c['kind'] for c in [x for x in d if x['id']=='$CC'][0]['comments'] if c['kind']=='question'][0]")" "question"
+$CLI stage "$CC" ready >/dev/null 2>&1
+chk "stage 推进生效" \
+  "$(curl -s "$BASE/api/cards" | jq_ "[x for x in d if x['id']=='$CC'][0]['stage']")" "ready"
+# show 不含已取代的决策
+HD=$(curl -s -X POST "$BASE/api/cards/$CC/comments" -H 'Content-Type: application/json' \
+  -d '{"kind":"decision","text":"第一版决策"}' | jq_ "d['comment']['id']")
+curl -s -o /dev/null -X POST "$BASE/api/cards/$CC/comments" -H 'Content-Type: application/json' \
+  -d "{\"kind\":\"decision\",\"text\":\"第二版决策\",\"supersedes\":[\"$HD\"]}"
+OUT=$($CLI show "$CC" 2>/dev/null)
+echo "$OUT" | grep -q "第二版决策" && ok "show 含生效中的决策" || no "show 缺生效决策" "$OUT"
+echo "$OUT" | grep -q "第一版决策" && no "show 含已取代的决策（不该有）" "$OUT" || ok "show 排除已取代的决策"
+# 文件回退：把 CLI 指到一个没有 server 的端口
+KANBAN_PORT=4999 $CLI comment "$CC" --kind progress --text "server 关着写的" >/dev/null 2>&1
+chk "server 不可达时回退到文件仍能写入" \
+  "$(python3 -c "
+import json;d=json.load(open('$CARDS/$CC.json'))
+print('yes' if any(c['text']=='server 关着写的' for c in d['comments']) else 'no')")" "yes"
+unset KANBAN_CARDS_DIR KANBAN_AGENT
+
 echo
 echo "通过 ${PASS}，失败 ${FAIL}"
 [ "$FAIL" -eq 0 ]

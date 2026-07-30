@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T13:31:32+07:00",
-  "rev": 6,
+  "updatedAt": "2026-07-30T13:34:50+07:00",
+  "rev": 7,
   "epic": "分发能力",
   "userStory": "安全分发",
   "track": "integration",
@@ -96,6 +96,18 @@
       "re": null,
       "supersedes": [],
       "text": "装好的项目实测可用：check-governance passed、npm test 30/30、ID 前缀换成 TKT 后新卡是 TKT-001。"
+    },
+    {
+      "id": "c-20260730T133450-e85f",
+      "at": "2026-07-30T13:34:50+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T13:34:50+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "--dry-run 实测：逐行报告 24 个动作，预演后目标目录仍为空。幂等实测：第二次运行 17 项报「相同，跳过」。"
     }
   ]
 }
