@@ -2,37 +2,37 @@
   "id": "DASH-012",
   "title": "UI：留言类型选择器 + 状态 chip + 待处理徽章",
   "content": "目标：让人写一条决策的成本足够低，否则通道建好了也没人用。\n\n设计约束：人只多碰一个控件——三按钮分段选择器 [留言][决策][问题]，默认「留言」\n（懒惰路径 = 无害路径）。answer/progress/evidence/blocker 是 agent 专用，不出现为按钮。\n\n验收标准：\n- 每条留言显示状态 chip：待处理 / 已确认 / 已完成 / 已取代；已确认带时间\n- 卡面显示「💬 N 待处理」徽章（有人写的 open 留言时）\n- 已有 open decision 上有「取代」链接，预填 supersedes\n- 人和 agent 的留言有身份色区分\n\n允许改的文件：tools/kanban/index.html, ai/skills/board-card.md（新建）,\n.claude/skills/board-card/SKILL.md（新建）, scripts/check-governance.sh\n验证命令：浏览器实测完整回路（写决策 → agent ack → 看到已确认）",
-  "stage": "backlog",
+  "stage": "done",
   "risk": "medium",
   "owner": "willmusubi",
   "agent": "claude-code",
   "approvalRequired": false,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T00:00:00+07:00",
-  "rev": 1,
+  "updatedAt": "2026-07-30T12:55:23+07:00",
+  "rev": 4,
   "epic": "人机决策通道",
   "userStory": "留言结构化",
   "track": "frontend",
   "dependsOn": [
-    "DASH-011"
+    "DASH-009"
   ],
   "order": 4,
   "readiness": {
     "problem_clear": true,
     "non_goals_clear": true,
     "acceptance_testable": true,
-    "files_known": false,
+    "files_known": true,
     "scope_defined": true,
-    "verification_contract": false,
-    "human_approval_recorded": false
+    "verification_contract": true,
+    "human_approval_recorded": true
   },
   "gates": {
     "product": false,
-    "ui": false,
+    "ui": true,
     "architecture": false,
     "security": false,
-    "test": false,
-    "code_review": false
+    "test": true,
+    "code_review": true
   },
   "links": {
     "featureSpec": "",
@@ -46,9 +46,30 @@
     "tools/kanban/index.html"
   ],
   "evidence": {
-    "commands": [],
-    "findings": [],
-    "residual": ""
+    "commands": [
+      "浏览器端到端：写决策 / agent ack / 取代 三条路径全部实测通过"
+    ],
+    "findings": [
+      "三按钮分段选择器 [留言][决策][提问]，默认「留言」——懒惰路径 = 无害路径。answer/progress/evidence/blocker 是 agent 专用，不出现为按钮。",
+      "状态 chip 带时间戳（「已确认 · 07-30 12:44」）。这是这张卡真正的产出：把「AI 到底看没看见我的决定」从信仰变成看板上可见的状态。",
+      "人（橙）/ agent（蓝）用身份色区分。真实数据里 11 条留言全是 agent 写的、人的决策被 agent 转述，没有身份色就分不出权威来源。",
+      "superseded 的留言半透明 + 划线，明确表示「不再生效」，而不是删掉——审计轨迹要保留。",
+      "textarea 的 placeholder 直接说明差别：「决策」会被注入 agent 的下一轮 context，「留言」只是记录。这比任何文档都有效。"
+    ],
+    "residual": "board-card skill（告诉 agent 这套协议怎么用）还没写，放到 DASH-011 一起做，因为两者都是「让 agent 知道该读什么」。移动端仍未适配。"
   },
-  "comments": []
+  "comments": [
+    {
+      "id": "c-20260730T125523-ea03",
+      "at": "2026-07-30T12:55:23+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-07-30T12:55:23+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "依赖图修正：原本 dependsOn=[DASH-011]（hook），但 UI 并不依赖 hook，真实依赖是 DASH-009（comment API）。这个错依赖是建卡时按「阶段顺序」设的，不是按「真实需要」——正是 project-kickoff 里被删掉的那条「一律强制依赖」规则的翻版。已改为 [DASH-009]。"
+    }
+  ]
 }

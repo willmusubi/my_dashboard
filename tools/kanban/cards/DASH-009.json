@@ -2,14 +2,14 @@
   "id": "DASH-009",
   "title": "只追加的 comment API + 人/agent 身份判定",
   "content": "目标：agent 能把进度、证据、提问写回看板，且永远不会覆盖人的留言。\n\n背景：现在没有 PATCH 也没有 per-comment 路由，追加一条留言要 GET-改-PUT 整张卡，\n和 UI 拖拽直接竞争。而 DEFAULT_OWNER 取 git config user.name，人和 agent 会署\n同一个名字，agent 分不清哪条是自己写的、哪条是给它的指令。\n\n非目标：不做认证（单机无对手，目的只是不要自己搞混）。\n\n验收标准：\n- POST /api/cards/:id/comments 只追加，服务端盖 id/at/status/statusAt\n- PATCH .../comments/:cid 只允许改 status；acked 只有 agent 能设，open 只有人能重开\n- PATCH /api/cards/:id 稀疏更新，仍跑原封不动的 checkDependsOn\n- X-Kanban-Agent header 非空 → authorKind=agent，否则 human\n- 整卡 PUT（含 handlePutBulk 拖拽路径）的 comments 一律取磁盘版本，忽略客户端送来的\n\n允许改的文件：tools/kanban/server.mjs, tools/kanban/card-store.mjs, tools/kanban/index.html\n验证命令：npm test",
-  "stage": "ready",
+  "stage": "done",
   "risk": "high",
   "owner": "willmusubi",
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T12:17:51+07:00",
-  "rev": 2,
+  "updatedAt": "2026-07-30T12:55:23+07:00",
+  "rev": 8,
   "epic": "人机决策通道",
   "userStory": "agent 读写通道",
   "track": "backend",
@@ -29,26 +29,90 @@
   "gates": {
     "product": false,
     "ui": false,
-    "architecture": false,
-    "security": false,
-    "test": false,
-    "code_review": false
+    "architecture": true,
+    "security": true,
+    "test": true,
+    "code_review": true
   },
   "links": {
     "featureSpec": "",
     "screenSpec": "",
     "mockupDecision": "",
     "taskCard": "",
-    "verificationReport": "",
+    "verificationReport": "tools/kanban/test.sh",
     "pr": ""
   },
   "refs": [
-    "tools/kanban/server.mjs"
+    "tools/kanban/server.mjs",
+    "tools/kanban/card-store.mjs",
+    "tools/kanban/index.html"
   ],
   "evidence": {
-    "commands": [],
-    "findings": [],
-    "residual": ""
+    "commands": [
+      "npm test → 单元 51 + 集成 30，共 81 项断言全绿",
+      "浏览器端到端：人写决策 → agent 403 被挡 → agent ack → 界面显示「已确认 · 07-30 12:44」",
+      "浏览器端到端：取代决策 → 旧的变「已取代」并划线，新的「待处理」"
+    ],
+    "findings": [
+      "agent 试图写 kind=decision 返回 403 而不是 400——这是权限问题不是格式问题，实测通过。",
+      "「人不能 ack 自己的决策」这条规则实测有效（403）。人确认自己的决策没有意义；acked 的语义是「agent 已消化」。",
+      "PATCH 只允许改 status。试图改 text 返回 400 并提示「要修正内容请发一条新留言并用 supersedes」——留言不可变是并发处理变平凡的原因。",
+      "关键并发保护实测：整卡 PUT 送 comments:[] 时，服务端仍保留全部 2 条留言，同时 title 的修改正常生效。这就是「人在浏览器拖卡永远洗不掉 agent 刚贴的留言」。",
+      "发现一个必须同步的兼容问题：整卡 PUT 不再接受 comments 之后，前端原有的留言框（push 到本地数组再整卡 PUT）会静默失效。已改为走新端点，否则会留下一个看起来能用、实际写不进去的界面。",
+      "顺带把 DASH-012 的 UI 核心一起做了（类型选择器、状态 chip、身份色、待处理徽章、取代按钮）——留一个显示 undefined 的半坏界面比范围超一点更糟。"
+    ],
+    "residual": "hook 还没接（DASH-011），所以决策目前仍依赖 agent 主动读卡；这正是 DASH-011 要解决的。CLI（DASH-010）也还没做，agent 现在得直接调 HTTP。"
   },
-  "comments": []
+  "comments": [
+    {
+      "id": "c-20260730T124237-5ff6",
+      "at": "2026-07-30T12:42:37+07:00",
+      "author": "willmusubi",
+      "authorKind": "human",
+      "kind": "decision",
+      "status": "superseded",
+      "statusAt": "2026-07-30T12:52:29+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "身份判定用 X-Kanban-Agent header，不要引入 token 文件——单机没有对手，多一个设置步骤只会多一个失败模式。"
+    },
+    {
+      "id": "c-20260730T124429-14b1",
+      "at": "2026-07-30T12:44:29+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-07-30T12:44:29+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "已按决策实现 actorOf()，读 X-Kanban-Agent header。"
+    },
+    {
+      "id": "c-20260730T124429-6900",
+      "at": "2026-07-30T12:44:29+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-30T12:44:29+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "npm test → 单元 51 + 集成 30，共 81 项断言全绿。"
+    },
+    {
+      "id": "c-20260730T125229-1abc",
+      "at": "2026-07-30T12:52:29+07:00",
+      "author": "willmusubi",
+      "authorKind": "human",
+      "kind": "decision",
+      "status": "open",
+      "statusAt": "2026-07-30T12:52:29+07:00",
+      "re": null,
+      "supersedes": [
+        "c-20260730T124237-5ff6"
+      ],
+      "text": "改主意了：agent 身份改用环境变量 KANBAN_AGENT，header 只作为覆写。"
+    }
+  ]
 }

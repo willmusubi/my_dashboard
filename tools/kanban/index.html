@@ -25,6 +25,9 @@
     --crit-soft: #fbe8e8;
     --muted: #6b7280;
     --muted-soft: #eceef1;
+    /* 人 vs AI 的身份色 —— 这是本产品的核心语义，不是装饰 */
+    --actor-human: #b45309;
+    --actor-agent: #3446d6;
     --shadow-card: 0 1px 2px rgba(20, 24, 31, 0.06), 0 1px 1px rgba(20, 24, 31, 0.04);
     --shadow-card-hover: 0 6px 20px rgba(20, 24, 31, 0.12);
     --shadow-modal: 0 24px 64px rgba(20, 24, 31, 0.28);
@@ -159,6 +162,31 @@
   .comment-time { font-size: 11px; color: var(--ink-faint); font-weight: 400; margin-left: 6px; }
   .comment-text { font-size: 13px; color: var(--ink-dim); margin-top: 2px; line-height: 1.5; white-space: pre-wrap; }
   .no-comment { font-size: 13px; color: var(--ink-faint); margin-bottom: 10px; }
+  .pending-pill { background: var(--warn-soft); color: var(--warn); }
+
+  /* ── 留言：人和 AI 的身份要一眼分得出 ── */
+  .cm-body { min-width: 0; flex: 1; }
+  .comment.is-superseded { opacity: 0.5; }
+  .comment.is-superseded .comment-text { text-decoration: line-through; }
+  .av-human { background: var(--actor-human, #b45309); }
+  .av-agent { background: var(--actor-agent, var(--accent)); }
+  .cm-kind { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; margin-left: 6px; background: var(--surface-sunken); color: var(--ink-dim); }
+  .cm-kind-decision { background: var(--accent-soft); color: var(--accent); }
+  .cm-kind-question { background: var(--warn-soft); color: var(--warn); }
+  .cm-kind-blocker { background: var(--crit-soft); color: var(--crit); }
+  .cm-status { font-size: 10.5px; font-weight: 700; margin-left: 5px; color: var(--ink-faint); }
+  .cm-open { color: var(--warn); }
+  .cm-acked { color: var(--accent); }
+  .cm-done { color: var(--good); }
+  .cm-supersede { border: 1px solid var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: 6px; padding: 2px 8px; font-size: 11px; margin-top: 6px; }
+  .cm-supersede:hover { color: var(--crit); border-color: var(--crit); }
+
+  .kind-pick { display: flex; gap: 4px; align-items: center; margin-bottom: 8px; background: var(--surface-sunken); border-radius: 8px; padding: 3px; width: fit-content; }
+  .kind-pick button[data-kind] { border: none; background: transparent; color: var(--ink-dim); font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 6px; }
+  .kind-pick button[data-kind].is-picked { background: var(--ink); color: #fff; }
+  .superseding { font-size: 11px; color: var(--crit); font-weight: 700; margin-left: 8px; display: inline-flex; align-items: center; gap: 4px; }
+  .superseding button { border: none; background: transparent; color: var(--crit); font-size: 14px; padding: 0 2px; }
+
   .comment-form { display: flex; gap: 8px; align-items: flex-start; }
   .comment-form textarea { flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; min-height: 40px; resize: vertical; }
   .comment-form button { border: none; background: var(--ink); color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; align-self: flex-start; }
@@ -358,6 +386,14 @@
     return api("/api/cards/" + encodeURIComponent(id), { method: "DELETE" })
       .catch(function (err) { showToast("删除失败：" + err.message, true); throw err; });
   }
+  /** 留言走专用的 append-only 端点。整卡 PUT 已不接受 comments —— 那是为了让
+   *  「人在浏览器拖卡」永远不可能洗掉 agent 刚贴的留言。 */
+  function addComment(id, kind, text, supersedes) {
+    return api("/api/cards/" + encodeURIComponent(id) + "/comments", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: kind, text: text, supersedes: supersedes || [] })
+    }).catch(function (err) { showToast("留言失败：" + err.message, true); throw err; });
+  }
 
   /* ── render: lanes ── */
   function dependsOnBadge(tk) {
@@ -378,6 +414,9 @@
     if (tk.agent) badges += '<span class="pill agent-pill">' + escapeHtml(tk.agent) + "</span>";
     if (tk.approvalRequired) badges += '<span class="pill approval-pill">需人工批准</span>';
     badges += dependsOnBadge(tk);
+    // 有人写的、agent 还没确认的项 —— 从看板一眼就能看出哪张卡在等 agent 回应
+    var pend = pendingHumanCount(tk);
+    if (pend) badges += '<span class="pill pending-pill">💬 ' + pend + " 待处理</span>";
     return (
       '<div class="ticket-card risk-stripe-' + tk.risk + '" data-id="' + escapeHtml(tk.id) + '" draggable="true" tabindex="0">' +
       '<div class="ticket-id mono">' + tk.id + "</div>" +
@@ -522,6 +561,47 @@
       '<textarea class="fld-area" data-field="' + path + '" data-kind="' + kind + '" placeholder="' +
       escapeHtml(placeholder || "") + '">' + escapeHtml(value || "") + "</textarea></div>";
   }
+  /* ── 留言渲染 ── */
+  var KIND_LABEL = {
+    decision: "决策", question: "提问", answer: "回答", note: "留言",
+    blocker: "阻塞", progress: "进度", evidence: "证据"
+  };
+  var STATUS_LABEL = { open: "待处理", acked: "已确认", done: "已完成", superseded: "已取代" };
+  var supersedingId = null;   // 正在取代哪条决策
+
+  function fmtAt(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    var p = function (n) { return String(n).padStart(2, "0"); };
+    return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+
+  function commentHtml(c) {
+    var isAgent = c.authorKind === "agent";
+    var initial = c.author ? c.author.charAt(0).toUpperCase() : "?";
+    var statusTxt = STATUS_LABEL[c.status] || c.status;
+    // 「已确认 · 14:02」——把「AI 到底看没看见我的决定」从信仰变成可见状态
+    if (c.status === "acked" || c.status === "done") statusTxt += " · " + fmtAt(c.statusAt);
+    var canSupersede = c.kind === "decision" && (c.status === "open" || c.status === "acked");
+    return '<div class="comment' + (c.status === "superseded" ? " is-superseded" : "") + '">' +
+      '<div class="comment-avatar ' + (isAgent ? "av-agent" : "av-human") + '">' + escapeHtml(initial) + "</div>" +
+      '<div class="cm-body">' +
+      '<span class="comment-name">' + escapeHtml(c.author || "匿名") + "</span>" +
+      '<span class="cm-kind cm-kind-' + c.kind + '">' + (KIND_LABEL[c.kind] || c.kind) + "</span>" +
+      '<span class="cm-status cm-' + c.status + '">' + escapeHtml(statusTxt) + "</span>" +
+      '<span class="comment-time">' + fmtAt(c.at) + "</span>" +
+      '<div class="comment-text">' + escapeHtml(c.text) + "</div>" +
+      (canSupersede ? '<button type="button" class="cm-supersede" data-supersede="' + c.id + '">取代这条决策</button>' : "") +
+      "</div></div>";
+  }
+
+  /** 有人写的、还没处理完的项 —— 与服务端 liveHumanItems 同一套判据 */
+  function pendingHumanCount(tk) {
+    return (tk.comments || []).filter(function (c) {
+      return c.authorKind === "human" && c.status === "open";
+    }).length;
+  }
+
   function tally(pairs, obj) {
     var n = pairs.filter(function (p) { return obj[p[0]]; }).length;
     return '<span class="tally' + (n === pairs.length ? " tally-full" : "") + '">' + n + " / " + pairs.length + "</span>";
@@ -539,11 +619,7 @@
     });
 
     var commentsHtml = tk.comments.length
-      ? tk.comments.map(function (c) {
-          var initial = c.name ? c.name.charAt(0).toUpperCase() : "?";
-          return '<div class="comment"><div class="comment-avatar">' + initial + '</div><div><span class="comment-name">' + escapeHtml(c.name) +
-            '</span><span class="comment-time">' + escapeHtml(c.time) + '</span><div class="comment-text">' + escapeHtml(c.text) + "</div></div></div>";
-        }).join("")
+      ? tk.comments.map(commentHtml).join("")
       : '<p class="no-comment">尚无留言。</p>';
 
     document.getElementById("modal").innerHTML =
@@ -596,7 +672,14 @@
       "</details>" +
 
       '<div><span class="modal-section-label">留言</span>' + commentsHtml +
-      '<div class="comment-form"><textarea id="new-comment" placeholder="留个言…"></textarea><button type="button" id="add-comment">送出</button></div></div>' +
+      '<div class="kind-pick">' +
+        '<button type="button" data-kind="note" class="is-picked">留言</button>' +
+        '<button type="button" data-kind="decision">决策</button>' +
+        '<button type="button" data-kind="question">提问</button>' +
+        (supersedingId ? '<span class="superseding">取代 ' + escapeHtml(supersedingId.slice(-4)) + ' <button type="button" id="cancel-supersede">×</button></span>' : "") +
+      "</div>" +
+      '<div class="comment-form"><textarea id="new-comment" placeholder="「决策」会被注入 agent 的下一轮 context；「留言」只是记录…"></textarea>' +
+      '<button type="button" id="add-comment">送出</button></div></div>' +
       "</div>" +
       '<div class="modal-footer"><button type="button" class="danger-btn" id="delete-card">删除卡片</button><span></span></div>';
 
@@ -740,18 +823,42 @@
     if (e.target === document.getElementById("modal-overlay")) { closeModal(); return; }
     if (e.target.id === "modal-close-btn") { closeModal(); return; }
 
+    var kindBtn = e.target.closest(".kind-pick button[data-kind]");
+    if (kindBtn) {
+      kindBtn.parentNode.querySelectorAll("button[data-kind]").forEach(function (b) {
+        b.classList.toggle("is-picked", b === kindBtn);
+      });
+      return;
+    }
+
+    var supBtn = e.target.closest("[data-supersede]");
+    if (supBtn && openId) {
+      supersedingId = supBtn.dataset.supersede;
+      reopenModal(openId);
+      var ta = document.getElementById("new-comment");
+      if (ta) ta.focus();
+      showToast("写一条新决策来取代它；旧的会变成「已取代」，不再进入 agent 的 context");
+      return;
+    }
+    if (e.target.id === "cancel-supersede" && openId) {
+      supersedingId = null;
+      reopenModal(openId);
+      return;
+    }
+
     if (e.target.id === "add-comment" && openId) {
-      var tk4 = getTicket(openId);
       var textarea = document.getElementById("new-comment");
       var text = textarea.value.trim();
       if (!text) return;
-      var now = new Date();
-      var pad = function (n) { return String(n).padStart(2, "0"); };
-      var time = pad(now.getMonth() + 1) + "-" + pad(now.getDate()) + " " + pad(now.getHours()) + ":" + pad(now.getMinutes());
-      tk4.comments.push({ name: COMMENT_AUTHOR, time: time, text: text });
-      saveOne(tk4).then(function (saved) {
-        Object.keys(saved).forEach(function (k) { tk4[k] = saved[k]; });
-        reopenModal(openId);
+      var kindEl = document.querySelector(".kind-pick .is-picked");
+      var kind = kindEl ? kindEl.dataset.kind : "note";
+      var cardId = openId;
+      var sup = supersedingId ? [supersedingId] : [];
+      if (sup.length) kind = "decision";   // 取代只对决策有意义
+      addComment(cardId, kind, text, sup).then(function () {
+        supersedingId = null;
+        // 服务端只回一条留言；整卡（含新 rev）要重新拉，否则本地 rev 会过期
+        return loadAll().then(function () { renderAll(); if (openId === cardId) reopenModal(cardId); });
       }).catch(function () {});
       return;
     }

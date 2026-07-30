@@ -105,6 +105,62 @@ CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/cards" \
   -H 'Content-Type: application/json' -d '{"title":"全栈卡","track":"fullstack"}')
 chk "POST track=fullstack → 201" "$CODE" "201"
 
+echo "── comment API：只追加 + 身份判定 ──"
+CID=$(post '{"title":"留言测试","stage":"backlog"}' | jq_ "d['id']")
+# 人写决策
+HUMAN=$(curl -s -X POST "$BASE/api/cards/$CID/comments" -H 'Content-Type: application/json' \
+  -d '{"kind":"decision","text":"侧边栏用可收合，不要 drawer"}')
+chk "人可以写 decision" "$(echo "$HUMAN" | jq_ "d['comment']['kind']")" "decision"
+chk "authorKind=human" "$(echo "$HUMAN" | jq_ "d['comment']['authorKind']")" "human"
+chk "默认 status=open" "$(echo "$HUMAN" | jq_ "d['comment']['status']")" "open"
+DID=$(echo "$HUMAN" | jq_ "d['comment']['id']")
+# agent 不能写决策
+CODE=$(curl -s -o /tmp/f.json -w '%{http_code}' -X POST "$BASE/api/cards/$CID/comments" \
+  -H 'Content-Type: application/json' -H 'X-Kanban-Agent: claude-code' \
+  -d '{"kind":"decision","text":"我说了算"}')
+chk "agent 写 decision → 403" "$CODE" "403"
+# agent 可以 ack
+CODE=$(curl -s -o /tmp/a.json -w '%{http_code}' -X PATCH "$BASE/api/cards/$CID/comments/$DID" \
+  -H 'Content-Type: application/json' -H 'X-Kanban-Agent: claude-code' -d '{"status":"acked"}')
+chk "agent 可以把决策标为 acked" "$CODE" "200"
+chk "acked 带上了 statusAt" "$(python3 -c "
+import json,re;d=json.load(open('/tmp/a.json'));print('yes' if re.search(r'[+-]\d{2}:\d{2}\$',d['comment']['statusAt']) else 'no')")" "yes"
+# 人不能 ack 自己的决策
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$BASE/api/cards/$CID/comments/$DID" \
+  -H 'Content-Type: application/json' -d '{"status":"acked"}')
+chk "人 ack 自己的决策 → 403" "$CODE" "403"
+# 只能改 status
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$BASE/api/cards/$CID/comments/$DID" \
+  -H 'Content-Type: application/json' -d '{"text":"偷偷改内容"}')
+chk "改留言文本 → 400（内容不可变）" "$CODE" "400"
+# agent 报进度
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/cards/$CID/comments" \
+  -H 'Content-Type: application/json' -H 'X-Kanban-Agent: claude-code' \
+  -d '{"kind":"evidence","text":"npm test 全绿"}')
+chk "agent 可以交 evidence" "$CODE" "201"
+
+echo "── 整卡 PUT 不能洗掉留言（关键并发保护）──"
+FULL=$(curl -s "$BASE/api/cards" | python3 -c "
+import sys,json;d=json.load(sys.stdin);c=[x for x in d if x['id']=='$CID'][0]
+c['comments']=[]           # 模拟过期客户端：手上那份还没有这些留言
+c['title']='改个标题'
+print(json.dumps(c))")
+curl -s -o /dev/null -X PUT "$BASE/api/cards/$CID" -H 'Content-Type: application/json' -d "$FULL"
+N=$(curl -s "$BASE/api/cards" | jq_ "len([x for x in d if x['id']=='$CID'][0]['comments'])")
+chk "整卡 PUT 送空 comments，服务端仍保留 2 条" "$N" "2"
+chk "标题确实改了（其余字段照常生效）" \
+  "$(curl -s "$BASE/api/cards" | jq_ "[x for x in d if x['id']=='$CID'][0]['title']")" "改个标题"
+
+echo "── PATCH 稀疏更新 ──"
+REV=$(curl -s "$BASE/api/cards" | jq_ "[x for x in d if x['id']=='$CID'][0]['rev']")
+CODE=$(curl -s -o /tmp/p.json -w '%{http_code}' -X PATCH "$BASE/api/cards/$CID" \
+  -H 'Content-Type: application/json' -H "If-Match: $REV" -d '{"stage":"ready","risk":"high"}')
+chk "PATCH 只送两个字段 → 200" "$CODE" "200"
+chk "stage 已改" "$(jq_ "d['stage']" </tmp/p.json)" "ready"
+chk "留言没被 PATCH 影响" "$(jq_ "len(d['comments'])" </tmp/p.json)" "2"
+chk "标题没被清空" "$(jq_ "d['title']" </tmp/p.json)" "改个标题"
+
+
 echo
 echo "通过 ${PASS}，失败 ${FAIL}"
 [ "$FAIL" -eq 0 ]

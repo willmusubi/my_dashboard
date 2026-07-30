@@ -213,6 +213,93 @@ function handlePost(res, body) {
   sendJson(res, 201, card, { ETag: String(card.rev) });
 }
 
+/**
+ * POST /api/cards/:id/comments —— 只追加。
+ * 整卡 PUT 不再接受 comments，所以这是唯一的写入口。好处是「人在浏览器拖卡」
+ * 和「agent 贴留言」不再竞争同一份数据：前者永远不碰 comments 数组。
+ */
+function handleAddComment(req, res, id, body) {
+  const input = JSON.parse(body);
+  if (!store.isPlainObject(input)) return sendJson(res, 400, { error: "body 必须是 object" });
+  const card = store.readCard(id);
+  if (!card) return sendJson(res, 404, { error: id + " 不存在" });
+
+  const actor = actorOf(req, input);
+  const r = store.appendComment(card, {
+    kind: input.kind,
+    text: input.text,
+    actor,
+    re: input.re,
+    supersedes: input.supersedes,
+  });
+  // agent 试图下决策 → 403（不是 400）：这是权限问题，不是格式问题。
+  if (r.error) {
+    const code = /只能由人工|不得撰写/.test(r.error) ? 403 : 400;
+    return sendJson(res, code, { error: r.error });
+  }
+
+  const err = store.validateCard(card);
+  if (err) return sendJson(res, 400, { error: err });
+  store.bumpRev(card);
+  store.writeCard(card);
+  sendJson(res, 201, { comment: r.comment, rev: card.rev }, { ETag: String(card.rev) });
+}
+
+/** PATCH /api/cards/:id/comments/:cid —— 只允许改 status，别的一概不动。
+ *  留言文本不可变是并发处理变平凡的原因，别在这里开后门。 */
+function handlePatchComment(req, res, id, cid, body) {
+  const input = JSON.parse(body);
+  if (!store.isPlainObject(input)) return sendJson(res, 400, { error: "body 必须是 object" });
+  const extra = Object.keys(input).filter((k) => k !== "status" && k !== "agent");
+  if (extra.length) {
+    return sendJson(res, 400, {
+      error: "只允许改 status，收到了：" + extra.join("、") + "（要修正内容请发一条新留言并用 supersedes）",
+    });
+  }
+  const card = store.readCard(id);
+  if (!card) return sendJson(res, 404, { error: id + " 不存在" });
+
+  const actor = actorOf(req, input);
+  const r = store.setCommentStatus(card, cid, input.status, actor.authorKind);
+  if (r.error) {
+    const code = /只能由/.test(r.error) ? 403 : 400;
+    return sendJson(res, code, { error: r.error });
+  }
+  store.bumpRev(card);
+  store.writeCard(card);
+  sendJson(res, 200, { comment: r.comment, rev: card.rev }, { ETag: String(card.rev) });
+}
+
+/**
+ * PATCH /api/cards/:id —— 稀疏更新。agent 只想推进一个 stage 时不必送整张卡，
+ * 于是它无法覆盖它没打算改的字段。依赖门禁照常生效。
+ */
+function handlePatchCard(req, res, id, body) {
+  const patch = JSON.parse(body);
+  if (!store.isPlainObject(patch)) return sendJson(res, 400, { error: "body 必须是 object" });
+
+  const cardMap = new Map(store.readAllCards().map((x) => [x.id, x]));
+  const current = cardMap.get(id);
+  if (!current) return sendJson(res, 404, { error: id + " 不存在" });
+
+  const conflict = checkPrecondition(req, current);
+  if (conflict) return sendJson(res, 409, conflict);
+
+  // comments 只能经 append-only 端点写；id/rev/createdAt 不可改。
+  const { comments, id: _i, rev: _r, createdAt: _c, agent: patchAgent, ...rest } = patch;
+  const merged = store.fillDefaults({ ...current, ...rest });
+  if (typeof patchAgent === "string" && "agent" in patch) merged.agent = patchAgent;
+
+  const err = store.validateCard(merged);
+  if (err) return sendJson(res, 400, { error: err });
+  cardMap.set(merged.id, merged);
+  const depErr = store.checkDependsOn(merged, cardMap);
+  if (depErr) return sendJson(res, 400, { error: depErr });
+  store.bumpRev(merged);
+  store.writeCard(merged);
+  sendJson(res, 200, merged, { ETag: String(merged.rev) });
+}
+
 function handleDelete(res, id) {
   if (!store.deleteCardFile(id)) return sendJson(res, 404, { error: id + " 不存在" });
 
@@ -271,6 +358,31 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 405, { error: "method not allowed" });
     }
 
+    // /api/cards/:id/comments/:cid —— 必须排在 /api/cards/:id 之前
+    const cm = pathname.match(/^\/api\/cards\/([^/]+)\/comments\/([^/]+)$/);
+    if (cm) {
+      const id = decodeURIComponent(cm[1]);
+      const cid = decodeURIComponent(cm[2]);
+      if (!store.ID_RE.test(id)) {
+        return sendJson(res, 400, { error: "id 必须符合 ^" + store.ID_PREFIX + "-\\d{3,}$" });
+      }
+      if (!store.COMMENT_ID_RE.test(cid)) {
+        return sendJson(res, 400, { error: "留言 id 必须符合 " + store.COMMENT_ID_RE.source });
+      }
+      if (req.method === "PATCH") return handlePatchComment(req, res, id, cid, await readBody(req));
+      return sendJson(res, 405, { error: "method not allowed" });
+    }
+
+    const cl = pathname.match(/^\/api\/cards\/([^/]+)\/comments$/);
+    if (cl) {
+      const id = decodeURIComponent(cl[1]);
+      if (!store.ID_RE.test(id)) {
+        return sendJson(res, 400, { error: "id 必须符合 ^" + store.ID_PREFIX + "-\\d{3,}$" });
+      }
+      if (req.method === "POST") return handleAddComment(req, res, id, await readBody(req));
+      return sendJson(res, 405, { error: "method not allowed" });
+    }
+
     const one = pathname.match(/^\/api\/cards\/([^/]+)$/);
     if (one) {
       const id = decodeURIComponent(one[1]);
@@ -278,6 +390,7 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { error: "id 必须符合 ^" + store.ID_PREFIX + "-\\d{3,}$" });
       }
       if (req.method === "PUT") return handlePutOne(req, res, id, await readBody(req));
+      if (req.method === "PATCH") return handlePatchCard(req, res, id, await readBody(req));
       if (req.method === "DELETE") return handleDelete(res, id);
       return sendJson(res, 405, { error: "method not allowed" });
     }
