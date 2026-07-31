@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-30T13:34:50+07:00",
-  "rev": 7,
+  "updatedAt": "2026-07-31T13:42:31+07:00",
+  "rev": 9,
   "epic": "分发能力",
   "userStory": "安全分发",
   "track": "integration",
@@ -53,7 +53,7 @@
       "--prefix TKT → 新建卡片 id 为 TKT-001"
     ],
     "findings": [
-      "上游脚本的根本问题不是「忘了加 --dry-run」，是没有 kit-owned / project-owned 的区分。它把 ai/skills 和 ai/context 一视同仁地 cp -R，于是目标项目写在 ai/context 里的架构地图和设计系统会被一起冲掉。这一版把两类分开：kit-owned 每次刷新（覆盖前备份），project-owned 目标已有就永不碰。",
+      "上游**有** kit-owned / project-owned 的划分，而且是有意设计的：ai/context 用逐文件 copy_if_missing 保护（第 43-47 行，注释原文就用了「project-owned」这个词），还特意处理了「旧安装缺新增模板」的情况；ai/artifacts 只播种 README 且注释写明 never touch produced artifacts；README 里也列了完整的 Never overwritten 清单。真正的问题在**执行层**：kit-owned 那 8 行 cp -R 无备份、无日志、无预演，README 用「改过就先 commit」兜底——那是纪律不是机制。另一个实质缺口是 tools/kanban 用 if [[ ! -d ]] 整个跳过，导致已安装的项目永远收不到 server.mjs 的 bug 修复。本版的增量因此是两类：(a) 把 tools/kanban 拆成「代码 kit-owned 刷新 + cards/epics.json/config.json project-owned 不碰」，这才让「改造实验室 + 分发源」成立；(b) 补上 --dry-run、覆盖前备份、逐行日志、四道安全阀与 config.json。",
       "符号链接检查不是过度防御：cp -R 会跟随链接。如果目标项目的 .claude 指向 ~/.claude，安装就会把 kit 的 skills 和 agents 写进全局配置目录，污染所有其他项目。",
       "卡片目录只建空骨架，绝不把本仓库的卡片复制过去——那会让两个项目的 id 空间混在一起。",
       "ID 前缀通过 KANBAN_ID_PREFIX 环境变量注入而不是改代码，所以分发出去的 card-store.mjs 是同一份，升级时不会因为「目标改过前缀」而产生冲突。"
@@ -108,6 +108,18 @@
       "re": null,
       "supersedes": [],
       "text": "--dry-run 实测：逐行报告 24 个动作，预演后目标目录仍为空。幂等实测：第二次运行 17 项报「相同，跳过」。"
+    },
+    {
+      "id": "c-20260731T134231-6fe1",
+      "at": "2026-07-31T13:42:31+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-07-31T13:42:31+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "更正：本卡 findings 第一条原本写着「上游没有 kit-owned / project-owned 的区分，ai/context 里的架构地图会被冲掉」——那是错的，事实相反。上游 install-into-project.sh 第 43-47 行专门用逐文件 copy_if_missing 保护 ai/context，注释原文就用了「project-owned」这个词，还特意处理了「旧安装缺新增模板」的情况；上游 README 也明确列了 Never overwritten 清单。是在用户要求核对上游原文时发现的，已改正 findings[0]。这已经是我第三次低估上游（前两次：gates 谁批准、字段该不该人编辑）。模式是——上游的设计对，但只停在文档和注释里，执行层很薄；三次的价值都在「让它真正生效」，不在「重新设计」。改上游之前先读原文和注释。"
     }
   ]
 }
