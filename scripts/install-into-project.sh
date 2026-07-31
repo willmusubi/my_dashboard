@@ -118,18 +118,33 @@ else
   say "  保留目标版本  tools/kanban/cards/（$(ls "$TARGET"/tools/kanban/cards/*.json 2>/dev/null | wc -l | tr -d ' ') 张卡）"; N_SKIP+=1
 fi
 
-# 卡片 id 前缀与端口：分发到别的项目时必须能改，否则两个项目的 id 会撞。
-# 用环境变量注入，避免改代码——card-store.mjs 读 KANBAN_ID_PREFIX / KANBAN_PORT。
-if [[ -n "$PREFIX" || -n "$PORT" ]]; then
-  say ""
-  say "写入 .env.kanban（card-store.mjs 与 server.mjs 会读这些变量）："
-  ENVF="$TARGET/.env.kanban"
-  [[ -e "$ENVF" ]] && backup_of "$ENVF"
-  BODY="# 看板配置。用法：set -a; . ./.env.kanban; set +a; npm run kanban"
-  [[ -n "$PREFIX" ]] && BODY="$BODY"$'\n'"KANBAN_ID_PREFIX=${PREFIX}"
-  [[ -n "$PORT" ]]   && BODY="$BODY"$'\n'"KANBAN_PORT=${PORT}"
+# 卡片 id 前缀与端口。**必须写成文件而不是环境变量**：hook 由 Claude Code 启动，
+# 环境里不会有 KANBAN_*，也不会去 source 任何 .env。只放环境变量的话，分发出去后
+# hook 的正则仍是源项目的前缀，自动注入静默失效——看起来一切正常，实际通道断了。
+# 而且这个文件**无条件写**：不写的话目标项目会沿用默认 DASH/4430，直接和源项目撞端口。
+CFGF="$TARGET/tools/kanban/config.json"
+CUR_PREFIX="${PREFIX:-DASH}"
+CUR_PORT="${PORT:-4430}"
+say ""
+if [[ -e "$CFGF" ]]; then
+  say "保留目标版本  tools/kanban/config.json（已存在，不覆盖）"
+  say "  当前内容：$(tr -d '\n ' < "$CFGF")"
+else
+  say "写入 tools/kanban/config.json（server / cli / hook 共读这一份）："
+  BODY="{
+  \"idPrefix\": \"${CUR_PREFIX}\",
+  \"port\": ${CUR_PORT}
+}"
   printf '%s\n' "$BODY" | sed 's/^/  /'
-  [[ "$DRY" -eq 1 ]] || printf '%s\n' "$BODY" > "$ENVF"
+  [[ "$DRY" -eq 1 ]] || { mkdir -p "$(dirname "$CFGF")"; printf '%s\n' "$BODY" > "$CFGF"; }
+  if [[ -z "$PREFIX" ]]; then
+    say "  ⚠️  没指定 --prefix，用了默认 DASH。**建第一张卡之前**改掉它，"
+    say "      否则和其他项目的卡片 id 混在一起；建卡之后再改会让整块看板失效。"
+  fi
+  if [[ -z "$PORT" ]]; then
+    say "  ⚠️  没指定 --port，用了默认 4430。若该端口已被其他项目的看板占用，"
+    say "      server 会直接退出（lsof -i :4430 可查）。"
+  fi
 fi
 
 say ""
@@ -139,14 +154,16 @@ if [[ "$DRY" -eq 1 ]]; then
 else
   [[ "$N_OVER" -gt 0 ]] && say "被覆盖的文件已备份在：$BACKUP"
   say ""
-  say "接下来："
-  say "  1. 目标项目里跑 bash scripts/check-governance.sh 自检"
-  say "  2. 目标项目里跑 npm test 确认看板可用（不会碰真实卡片）"
-  say "  3. package.json 加脚本：\"kanban\": \"node tools/kanban/server.mjs\""
-  [[ -n "$PREFIX" ]] && say "  4. 卡片 id 前缀是 $PREFIX —— **建第一张卡之前**确认好，之后改会让整块看板失效"
-  if [[ -n "$PREFIX" || -n "$PORT" ]]; then
-    say "  注意：.env.kanban 很可能被目标项目 .gitignore 的 .env* 规则忽略（个人用无妨；"
-    say "        要让配置随仓库走，就把这两个变量写进 package.json 的 kanban 脚本里）"
-  fi
+  say "接下来（在目标项目里）："
+  say "  1. 确认 tools/kanban/config.json 的 idPrefix 是 ${CUR_PREFIX}、port 是 ${CUR_PORT}"
+  say "     —— 前缀**建第一张卡之前**定好，之后再改会让整块看板失效"
+  say "  2. package.json 加脚本： \"kanban\": \"node tools/kanban/server.mjs\","
+  say "                          \"test\": \"bash tools/kanban/test.sh\""
+  say "  3. bash scripts/check-governance.sh   自检"
+  say "  4. npm test                           确认看板可用（跑在临时目录，不碰真实卡片）"
+  say "  5. npm run kanban                     打开 http://127.0.0.1:${CUR_PORT}"
+  say "  6. hook 要开一个**新的 Claude Code 会话**才生效（本次会话启动时"
+  say "     目标项目还没有 .claude/settings.json，配置 watcher 没在监视它）"
+  say ""
   say "  卸载：删掉 ai/、tools/kanban/、.claude/{skills,agents,settings.json}、scripts/check-governance.sh"
 fi

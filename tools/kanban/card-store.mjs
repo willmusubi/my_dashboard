@@ -21,10 +21,28 @@ export const EPICS_JSON = path.join(HERE, "epics.json");
 // 卡再建新卡会拿到同一个 id，别人的 dependsOn 就静默指向了一张无关的新卡。
 export const SEQ_FILE = path.join(CARDS_DIR, ".seq");
 
-// 分发到其他项目时改这个（或设 KANBAN_ID_PREFIX）。必须在建第一张卡之前定，
+/**
+ * 项目级配置。**必须放文件，不能只靠环境变量**——hook 是 Claude Code 启动的，
+ * 环境里不会有 KANBAN_* ，也不会去 source 任何 .env。曾经把 idPrefix 只放环境
+ * 变量，结果分发到用 TKT 前缀的项目后，hook 的正则仍是 \bDASH-\d{3,}\b，
+ * 自动注入静默失效——看起来一切正常，实际通道断了。
+ *
+ * 优先级：环境变量（测试用） > config.json > 默认值。
+ */
+function readLocalConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(HERE, "config.json"), "utf8"));
+  } catch {
+    return {};
+  }
+}
+const CFG = readLocalConfig();
+
+// 分发到其他项目时改 config.json 的 idPrefix。**必须在建第一张卡之前定**，
 // 因为 ID_RE 会校验每个 id 和每个 dependsOn 元素。
-export const ID_PREFIX = process.env.KANBAN_ID_PREFIX || "DASH";
+export const ID_PREFIX = process.env.KANBAN_ID_PREFIX || CFG.idPrefix || "DASH";
 export const ID_RE = new RegExp("^" + ID_PREFIX + "-\\d{3,}$");
+export const PORT = Number(process.env.KANBAN_PORT) || Number(CFG.port) || 4430;
 
 export const STAGES = ["backlog", "blocked", "ready", "implementing", "verify", "done"];
 export const ADVANCED_STAGES = ["ready", "implementing", "verify", "done"];

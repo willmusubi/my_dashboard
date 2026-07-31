@@ -17,8 +17,9 @@ import { execSync } from "node:child_process";
 import * as store from "./card-store.mjs";
 
 const HOST = "127.0.0.1";
-// 可用 KANBAN_PORT 覆写：平行项目很多时，同时开两块看板不会撞端口。
-const PORT = Number(process.env.KANBAN_PORT) || 4430;
+// 端口来自 card-store 的统一配置（config.json，可被 KANBAN_PORT 覆写）——
+// server / cli / hook 必须读同一份，否则分发出去就各说各话。
+const PORT = store.PORT;
 
 const HERE = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
 const INDEX_HTML = path.join(HERE, "index.html");

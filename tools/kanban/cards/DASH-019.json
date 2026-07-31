@@ -1,0 +1,77 @@
+{
+  "id": "DASH-019",
+  "title": "配置改用 config.json —— 修掉分发后 hook 静默失效",
+  "content": "目标：分发到别的项目后，server / cli / hook 三个入口读到同一份配置。\n\n背景：ID_PREFIX 原本只从环境变量读（process.env.KANBAN_ID_PREFIX || \"DASH\"），\n而 hook 是 Claude Code 启动的，环境里不会有 KANBAN_*，也不会去 source .env.kanban。\n所以装到用 TKT 前缀的项目后，hook 的正则仍是 \\bDASH-\\d{3,}\\b，\n永远匹配不到 TKT-005——人机决策通道的核心（自动注入）静默失效，\n而且看起来一切正常。这个 bug 只在分发场景出现，在源项目里测不出来。\n\n非目标：不改 schema，不动卡片数据。\n\n验收标准：\n- tools/kanban/config.json 承载 idPrefix / port，server、cli、hook 共读\n- 优先级：环境变量（测试用）> config.json > 默认值\n- install 脚本无条件写 config.json（不写的话目标项目沿用 DASH/4430 直接撞端口）\n- 目标项目里不设任何环境变量，hook 也能匹配到自定义前缀的卡号\n\n允许改的文件：tools/kanban/card-store.mjs, server.mjs, cli.mjs,\ntools/kanban/config.json（新建）, scripts/install-into-project.sh\n验证命令：装到临时目录用 TKT 前缀，建卡后喂 hook 看能否匹配",
+  "stage": "done",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-31",
+  "updatedAt": "2026-07-31T13:25:45+07:00",
+  "rev": 6,
+  "epic": "分发能力",
+  "userStory": "安全分发",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": true,
+    "security": true,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "tools/kanban/card-store.mjs",
+    "tools/kanban/config.json",
+    "scripts/install-into-project.sh"
+  ],
+  "evidence": {
+    "commands": [
+      "install --prefix TKT --port 4455 到临时目录，不设环境变量启动 → TKT-001",
+      "hook 喂「帮我做 TKT-001」→ 正确注入（修复前零输出）",
+      "npm test → 115 项断言全绿",
+      "bash scripts/check-governance.sh → passed"
+    ],
+    "findings": [
+      "配置放环境变量在单项目里看不出问题，一分发就断：hook 由 Claude Code 启动，不继承 shell、不读 .env。凡是「三个入口都要读到」的配置，就必须放文件。",
+      "这个 bug 的形态和这个项目一路在修的那批一样——静默失效。hook 不报错、不警告，只是永远匹配不到，人以为通道通着。",
+      "install 必须**无条件**写 config.json。原本只在传了 --prefix/--port 时才写，不传的话目标项目沿用默认 DASH/4430，直接和源项目撞端口，而且卡片 id 空间混在一起。",
+      "顺带把 .env.kanban 那套废掉了：它需要 set -a 手动 source，是又一个「必须记得做」的步骤，而这类步骤迟早会被忘记。"
+    ],
+    "residual": "**不用跟**：config.json 缺失时静默回退到 DASH/4430，没有报错。对源项目是对的（它就该是这个值），对目标项目由 install 脚本保证一定写入。触发重新评估的条件：出现有人手动拷贝而非用 install 脚本的情况。"
+  },
+  "comments": [
+    {
+      "id": "c-20260731T132545-1ff8",
+      "at": "2026-07-31T13:25:45+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-31T13:25:45+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "端到端实测：install --prefix TKT --port 4455 到临时目录 → config.json 写入 TKT/4455 → 不设任何环境变量启动 server → /api/config 返回 idPrefix TKT → 新卡是 TKT-001 → 把「帮我做 TKT-001」喂给该项目的 hook，正确注入了 <kanban-card id=\"TKT-001\">。修复前这一步是零输出。"
+    }
+  ]
+}

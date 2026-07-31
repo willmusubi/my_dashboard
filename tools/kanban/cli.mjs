@@ -21,8 +21,9 @@
  */
 import * as store from "./card-store.mjs";
 
-const PORT = Number(process.env.KANBAN_PORT) || 4430;
-const BASE = "http://127.0.0.1:" + PORT;
+// 端口与 id 前缀都来自 card-store 的统一配置（config.json），
+// 这样 server / cli / hook 三个入口不可能各说各话。
+const BASE = "http://127.0.0.1:" + store.PORT;
 
 // agent 身份。解析不出来就报错退出，绝不静默以人的身份发言——那会让人的决策和
 // agent 的记录混在一起，而整套设计的前提就是这两者必须分得开。
