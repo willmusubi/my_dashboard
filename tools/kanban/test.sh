@@ -10,7 +10,13 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/kanban-test.XXXXXX")"
 CARDS="$TMPROOT/cards"
 mkdir -p "$CARDS"
-PORT=${KANBAN_TEST_PORT:-4431}
+# 4531 而不是 44xx：44xx 是分发给各项目看板用的号段。测试端口若和某个项目的看板
+# 撞上，测试自己的 server 绑不上端口，整套断言会转而打到**真实的看板**上去。
+PORT=${KANBAN_TEST_PORT:-4531}
+# 卡号前缀固定成 TEST，不读宿主项目的 config.json。否则装到前缀非 DASH 的项目里，
+# 下面写死的 TEST-002 之类会打到 404，测试莫名其妙地失败（实测 medical_tourism 用
+# MT 前缀时就是这样）。测试必须是封闭的——数据目录已经隔离了，前缀也要隔离。
+export KANBAN_ID_PREFIX=TEST
 BASE="http://127.0.0.1:$PORT"
 PASS=0; FAIL=0
 
@@ -45,7 +51,7 @@ echo "── U4：order 不撞号 ──"
 for t in A B C; do post "{\"title\":\"$t\",\"stage\":\"backlog\"}" >/dev/null; done
 chk "三张卡 order = 1,2,3" \
   "$(curl -s "$BASE/api/cards" | jq_ "','.join(str(c['order']) for c in d if c['stage']=='backlog')")" "1,2,3"
-curl -sf -X DELETE "$BASE/api/cards/DASH-002" >/dev/null   # 删中间那张
+curl -sf -X DELETE "$BASE/api/cards/TEST-002" >/dev/null   # 删中间那张
 post '{"title":"D","stage":"backlog"}' >/dev/null
 chk "删中间再建，order 变 1,3,4（不复用 2）" \
   "$(curl -s "$BASE/api/cards" | jq_ "','.join(str(c['order']) for c in d if c['stage']=='backlog')")" "1,3,4"
@@ -92,13 +98,13 @@ chk "整批 PUT 带过期 rev → 409" "$CODE" "409"
 
 echo "── U2：坏档不废掉整块看板 ──"
 BEFORE=$(curl -s "$BASE/api/cards" | jq_ "len(d)")
-printf '{"id":"DASH-999","title":"坏档",,,}' > "$CARDS/DASH-999.json"
+printf '{"id":"TEST-999","title":"坏档",,,}' > "$CARDS/TEST-999.json"
 CODE=$(curl -s -o /tmp/after.json -w '%{http_code}' "$BASE/api/cards")
 chk "有坏档时 GET /api/cards 仍是 200（不是 400）" "$CODE" "200"
 chk "其余卡片全部还在" "$(jq_ "len(d)" </tmp/after.json)" "$BEFORE"
 chk "/api/issues 指名道姓报出坏档" \
-  "$(curl -s "$BASE/api/issues" | jq_ "d['broken'][0]['file']")" "DASH-999.json"
-rm -f "$CARDS/DASH-999.json"
+  "$(curl -s "$BASE/api/issues" | jq_ "d['broken'][0]['file']")" "TEST-999.json"
+rm -f "$CARDS/TEST-999.json"
 
 echo "── track=fullstack 不再让整批拒绝 ──"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/cards" \
@@ -207,13 +213,20 @@ unset KANBAN_CARDS_DIR KANBAN_AGENT
 # 下各有自有文件。早先 refresh() 整目录 rm -rf 再拷，会把它们静默删掉。
 echo
 echo "══ 分发脚本 ══"
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+INSTALLER="$REPO/scripts/install-into-project.sh"
+if [ ! -f "$INSTALLER" ]; then
+  # install-into-project.sh 是分发源独有的，不会被装到目标项目里。
+  # 这里必须显式跳过：上一版直接跑，结果是 3 条报「文件不存在」的失败，
+  # 外加 2 条**假通过**——断言的是「文件还在」，而 install 压根没跑过。
+  # 假通过比失败更糟，它会让人以为这个行为被守住了。
+  echo "  ⏭  跳过：这是分发出来的副本，没有 install-into-project.sh（只有分发源才有）"
+else
 IT=$(mktemp -d)
 mkdir -p "$IT/ai/process" "$IT/.claude/skills/proj-own"
 echo "项目自己的流程文档" > "$IT/ai/process/proj-own.md"
 echo "项目自己的 skill"   > "$IT/.claude/skills/proj-own/SKILL.md"
 printf '{"scripts":{"test":"vitest run"}}\n' > "$IT/package.json"
-IOUT=$(bash "$REPO_ROOT/scripts/install-into-project.sh" --prefix ZZZ --port 4499 "$IT" 2>&1)
+IOUT=$(bash "$INSTALLER" --prefix ZZZ --port 4499 "$IT" 2>&1)
 
 [ -f "$IT/ai/process/proj-own.md" ] \
   && ok "install 保住 ai/process 下的项目自有文件" \
@@ -232,7 +245,7 @@ echo "$IOUT" | grep -q "kanban:test" \
   && ok "项目已有 test 时改建议 kanban:test" \
   || no "仍建议覆盖既有的 test 脚本" "$IOUT"
 # 登记是测试产生的，别留在真实清单里
-python3 - "$REPO_ROOT/distributions.json" "$IT" <<'PY' 2>/dev/null || true
+python3 - "$REPO/distributions.json" "$IT" <<'PY' 2>/dev/null || true
 import json, sys
 p, t = sys.argv[1], sys.argv[2]
 d = json.load(open(p))
@@ -240,6 +253,7 @@ d["distributions"] = [r for r in d["distributions"] if r.get("path") != t]
 with open(p, "w") as f: json.dump(d, f, ensure_ascii=False, indent=2); f.write("\n")
 PY
 rm -rf "$IT"
+fi
 
 echo
 echo "通过 ${PASS}，失败 ${FAIL}"
