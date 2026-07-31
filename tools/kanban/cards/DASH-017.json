@@ -1,0 +1,90 @@
+{
+  "id": "DASH-017",
+  "title": "把 review-gates 的检查项搬到界面，修正「谁批准」的三态",
+  "content": "目标：看着「安全」这一关，能说出「它查什么、现在该谁动、我该说什么」。\n\n背景：用户看到高风险卡上「👤 架构」「👤 安全」问——「这些也应该我去编辑吗？\n安全和架构我有点看不懂，原来是交给 AI 判断的，我很有可能属于我未知的未知领域，\n我无法判断」。\n\n他是对的。review-gates.md 原文是「架构 agent，高风险任务再加上人工审查」、\n「安全性审查 agent，高风险任务需人工批准」——agent 是第一批准者，人是高风险时\n追加的一层。而 security-maintainability-review 的输出末行是「批准建议：批准 |\n要求修改 | 阻挡」，agent 给建议、人拍板。我把这两句压成「👤 只有你能勾」，\n把 agent 审查那一步整个丢掉了。\n\n用户还指出「咱们兜兜转转又回到了 Monstrare 的设计」——部分成立：关卡该怎么设计\n上游是对的，我没读透就动手。但上游的设计只停在文档里，界面上「安全」两个字加\n一个空框，检查项一条都看不见。这次做的全是把上游已有的内容呈现出来。\n\n非目标：\n- 不做 gate 三态机制（未审/已审待批/已拍板），那要给留言加 gate 字段改 schema\n- 不改 requiredGates（上一轮已验证，20 项测试覆盖）\n\n验收标准：\n- gateOwner 返回三值，agent_then_human 单独成一类\n- 每个 gate 点 ⓘ 能展开 review-gates.md 的检查项 + 谁出结论谁拍板\n- 高风险的架构/安全，说明里给出「让 claude 审一下」这种可直接说的话\n- cli.mjs show 把三类分开列\n- kanban.md 的表拆成「谁出结论」「谁拍板」两列\n\n允许改的文件：tools/kanban/card-store.mjs, tools/kanban/index.html,\ntools/kanban/test-store.mjs, ai/process/kanban.md, ai/skills/board-card.md\n验证命令：npm test && 浏览器点开三种类型的 gate 说明",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-31",
+  "updatedAt": "2026-07-31T11:00:27+07:00",
+  "rev": 7,
+  "epic": "看板可用性",
+  "userStory": "字段可编辑",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": true,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "tools/kanban/card-store.mjs",
+    "tools/kanban/index.html",
+    "ai/process/kanban.md",
+    "ai/skills/board-card.md"
+  ],
+  "evidence": {
+    "commands": [
+      "npm test → 单元 76（gate 相关 25 项）+ 集成 39，全绿",
+      "bash scripts/check-governance.sh → passed",
+      "浏览器实测 security / product / test / ui 四种 gate 的展开说明",
+      "cli.mjs show DASH-001 与 DASH-002，三段归属分开列"
+    ],
+    "findings": [
+      "根因是我把 review-gates.md 的两句原文压成了一句。原文「架构 agent，高风险任务再加上人工审查」是两步：agent 出结论 + 人加签。我压成「只有你能勾」，等于要求人凭空判断 OWASP Top 10——用户说的「未知的未知领域」完全成立，因为那本来就不是他该判断的。",
+      "gateOwner 从两值改三值。中间那类 agent_then_human 是最需要说清楚的，恰恰也是最容易被压扁的——两值模型里它只能归到 human，于是丢掉了「agent 先审」。",
+      "用户指出「兜兜转转又回到了 Monstrare 的设计」。部分成立：关卡该怎么设计上游是对的，我没读透就动手。但上游的设计只停在文档里——界面上「安全」两个字加一个空框，7 条检查项一条都看不见。这次做的全是搬运，不发明规则。上游的问题从来不是设计错，是设计没落地。",
+      "更深的方法论错误：做 U1 时我的依据是「67 张真卡的字段使用统计」，用数据驱动了一个本该用规格驱动的决策。该先读 review-gates.md 搞清「谁该填」，而不是从「哪些字段被填得多」倒推。数据能告诉你现状，不能告诉你应然。"
+    ],
+    "residual": "**不用跟**：没做 gate 三态（未审/已审待批/已拍板）。现在靠说明文字告诉人「没有结论之前不用勾」，但机制上拦不住。触发重新评估的条件：真的出现「不知道 agent 审没审就勾了」的情况。做的话需要给留言加 gate 字段。"
+  },
+  "comments": [
+    {
+      "id": "c-20260731T110027-32a0",
+      "at": "2026-07-31T11:00:27+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-31T11:00:27+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "浏览器实测三种归属的措辞：安全（高风险）→「agent 先审出结论，你再拍板…没有结论之前不用勾——可以直接说『让 claude 审一下这张卡的安全』」；产品 →「你判断。这是产品意图与验收标准的问题，agent 不该代你下结论」；测试 →「agent 负责。它审完自己勾，你不用管」。UI 因是后端卡，标题带「· 这张卡不需要这一关」。"
+    },
+    {
+      "id": "c-20260731T110027-2cc5",
+      "at": "2026-07-31T11:00:27+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-31T11:00:27+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "cli.mjs show 三段分开：DASH-001（high）→「你先审出结论、再交给人拍板：security；等人判断（不要自己勾）：product」；DASH-002（medium）→「等人判断（不要自己勾）：product」。25 项 gate 单元测试全绿。"
+    }
+  ]
+}

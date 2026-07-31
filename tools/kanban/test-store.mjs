@@ -206,12 +206,18 @@ console.log("── 必需关卡的判定（gates 分母不是固定的 6）─�
   eq("返回顺序与 GATE_KEYS 一致（界面按固定顺序渲染）",
     store.requiredGates(mk("high", "frontend")), [...store.GATE_KEYS]);
 
-  eq("product 只有人能批", store.gateOwner(mk("low", "backend"), "product"), "human");
-  eq("ui 只有人能批", store.gateOwner(mk("low", "frontend"), "ui"), "human");
+  // 三种归属，不是两种。中间那种（agent 先审出结论、人再拍板）最容易被压扁，
+  // 压扁的后果就是界面要求人凭空判断 OWASP Top 10。
+  eq("product 是人自己判断", store.gateOwner(mk("low", "backend"), "product"), "human");
+  eq("ui 是人自己判断", store.gateOwner(mk("low", "frontend"), "ui"), "human");
   eq("低风险的 architecture 归 agent", store.gateOwner(mk("low", "backend"), "architecture"), "agent");
-  eq("高风险的 architecture 需要人", store.gateOwner(mk("high", "backend"), "architecture"), "human");
-  eq("高风险的 security 需要人", store.gateOwner(mk("high", "backend"), "security"), "human");
+  eq("低风险的 security 归 agent", store.gateOwner(mk("low", "backend"), "security"), "agent");
+  eq("高风险的 architecture：agent 出结论、人拍板",
+    store.gateOwner(mk("high", "backend"), "architecture"), "agent_then_human");
+  eq("高风险的 security：agent 出结论、人拍板",
+    store.gateOwner(mk("high", "backend"), "security"), "agent_then_human");
   eq("test 始终归 agent", store.gateOwner(mk("high", "backend"), "test"), "agent");
+  eq("code_review 始终归 agent", store.gateOwner(mk("high", "backend"), "code_review"), "agent");
 
   // 复现用户看到的那张卡：medium + frontend，已勾 ui/test/code_review
   const c = mk("medium", "frontend");
@@ -230,7 +236,15 @@ console.log("── 必需关卡的判定（gates 分母不是固定的 6）─�
   // agent 看到的文本要说清楚谁该做什么
   const txt = store.renderCardForAgent(c);
   truthy("renderCardForAgent 显示 3/4", txt.includes("审查关卡 3/4"));
-  truthy("并提示 product 要等人批、不要自己勾", /等人批（不要自己勾）：product/.test(txt));
+  truthy("提示 product 要等人判断、不要自己勾", /等人判断（不要自己勾）：product/.test(txt));
+
+  // 高风险卡：agent 必须知道它对架构/安全该「先审出结论」，而不是干等人
+  const h = mk("high", "backend");
+  const ht = store.renderCardForAgent(h);
+  truthy("高风险卡提示 agent 先审出结论再交人拍板",
+    /你先审出结论、再交给人拍板：architecture、security/.test(ht));
+  truthy("同时把「等人判断」单独列出", /等人判断（不要自己勾）：product/.test(ht));
+  truthy("agent 自己该过的也单独列出", /你要过：test、code_review/.test(ht));
 }
 
 console.log("── 原子写 ──");

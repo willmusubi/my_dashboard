@@ -56,20 +56,30 @@ UI 工作还要额外满足：已出 2-3 个 mockup 变体、**人工已选定�
 **和 readiness 不同，gates 不需要勾满**——「这张卡要过哪几关」由它的 `risk` 和
 `track` 决定。所以界面上的分母是**这张卡的必需项数**，不是固定的 6：
 
-| gate | 对应关卡 | 谁勾 | 何时必需 |
-|---|---|---|---|
-| `product` | 产品关卡 | **人**（产品负责人） | 总是 |
-| `ui` | UI Mockup 关卡 | **人**（产品负责人或设计师） | `track` 是 `frontend` 或 `fullstack` |
-| `architecture` | 架构关卡 | agent；**高风险时人复核** | `risk` 是 `high` |
-| `security` | 安全性关卡 | agent；**高风险时人批准** | `risk` 是 `high` |
-| `test` | 验证关卡 | agent | 总是 |
-| `code_review` | 合并关卡 | agent | 总是 |
+**「谁出结论」和「谁拍板」是两件事**，别压成一件（曾经压过，结果界面要求人凭空
+判断 OWASP Top 10）：
+
+| gate | 对应关卡 | 谁出结论 | 谁拍板 | 何时必需 |
+|---|---|---|---|---|
+| `product` | 产品关卡 | —（人自己判断） | **人**（产品负责人） | 总是 |
+| `ui` | UI Mockup 关卡 | —（人自己判断） | **人**（产品负责人或设计师） | `track` 是 `frontend` 或 `fullstack` |
+| `architecture` | 架构关卡 | **架构 agent** | agent；**高风险时人** | `risk` 是 `high` |
+| `security` | 安全性关卡 | **安全审查 agent** | agent；**高风险时人** | `risk` 是 `high` |
+| `test` | 验证关卡 | 测试工程 agent | agent 或人 | 总是 |
+| `code_review` | 合并关卡 | agent | agent | 总是 |
 
 举例：`medium` + `frontend` 的卡需要 4 项（product / ui / test / code_review）；
 `low` + `backend` 只需 3 项；`high` 的卡六项全需要。
 
-**`product` 和 `ui` 只有人能勾，agent 不得自己勾**——那等于把代理输出当成批准，
-是 `CLAUDE.md` 明令禁止的。高风险卡的 `architecture` 与 `security` 同理。
+**`product` 和 `ui` 是人自己的判断**（「这个问题值得解决吗」「符合产品意图吗」），
+agent 不得自己勾，也不该代写结论。
+
+**`architecture` 和 `security` 在高风险卡上是两步**：agent 先跑
+`security-maintainability-review` 产出「发现的问题／影响／建议修法／**批准建议**」，
+人读结论后决定采纳或打回。agent 给的是**建议**，不是批准——自己勾就等于把代理
+输出当成批准，`CLAUDE.md` 明令禁止。**没有结论之前不该要求人拍板。**
+
+每一关具体查什么，见 `review-gates.md`；看板界面上点关卡旁的 ⓘ 也能展开同一份内容。
 
 这套判定实作在 `tools/kanban/card-store.mjs` 的 `requiredGates()` / `gateOwner()`，
 界面与 `cli.mjs show` 共用同一份规则。

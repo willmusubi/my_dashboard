@@ -156,6 +156,17 @@
   .chk-na { opacity: 0.42; }
   .chk-na input { pointer-events: auto; }
   .sect-hint { font-size: 10.5px; color: var(--ink-faint); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 8px; }
+  /* ⓘ 展开「这一关查什么」—— 检查项逐字来自 review-gates.md */
+  .chk-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .chk-row .chk { min-width: 0; }
+  .gate-i { border: none; background: transparent; color: var(--ink-faint); font-size: 12px; padding: 0 2px; line-height: 1; flex-shrink: 0; }
+  .gate-i:hover { color: var(--accent); }
+  .gate-info { margin-top: 10px; background: var(--surface-sunken); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; line-height: 1.6; }
+  .gate-info-head { font-weight: 700; margin-bottom: 6px; }
+  .gate-info ul { margin: 0 0 8px; padding-left: 18px; color: var(--ink-dim); }
+  .gate-info li { margin-bottom: 2px; }
+  .gate-info-who { color: var(--ink); border-top: 1px solid var(--line); padding-top: 8px; }
+  .gate-info-src { font-size: 10.5px; color: var(--ink-faint); margin-top: 6px; }
   .tally { font-size: 11px; font-weight: 700; color: var(--ink-faint); background: var(--surface-sunken); border-radius: 999px; padding: 1px 7px; margin-left: 6px; letter-spacing: 0; text-transform: none; }
   .tally-full { color: var(--good); background: var(--good-soft); }
   .sect { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
@@ -282,6 +293,7 @@
   var TICKETS = [];
   var EPICS = [];
   var openId = null;
+  var openGate = null;   // 当前展开说明的那一关，一次只展开一个
   var currentView = "board";
 
   function stageIndex(id) { for (var i = 0; i < STAGES.length; i++) if (STAGES[i].id === id) return i; return -1; }
@@ -307,9 +319,52 @@
     ["scope_defined", "范围有界"], ["verification_contract", "验证方法已定"],
     ["human_approval_recorded", "人工批准已记录"]
   ];
+  /* [key, 标签, 这一关查什么]
+     检查项**逐字取自 ai/process/review-gates.md** —— 界面只是把它呈现出来，不发明规则。
+     「安全」两个字加一个空框，人无从判断；把这一关到底在查什么摊开，才谈得上判断。 */
   var GATES = [
-    ["product", "产品"], ["ui", "UI"], ["architecture", "架构"],
-    ["security", "安全"], ["test", "测试"], ["code_review", "Code Review"]
+    ["product", "产品", [
+      "这个问题值得解决吗？",
+      "非目标是否清楚？",
+      "用户流程与验收标准是否完整？",
+      "边界案例是否涵盖？"
+    ]],
+    ["ui", "UI", [
+      "是否有多个变体？",
+      "是否涵盖默认、空状态、载入中、错误与移动版状态？",
+      "变体是否以 design-system.md 既有的 token 与组件组成？",
+      "新做的组件是否依既有风格制作、并已登记回组件库 inventory？",
+      "选定的变体是否符合产品意图？",
+      "视觉验收标准是否清楚？"
+    ]],
+    ["architecture", "架构", [
+      "计划是否遵循既有模式？",
+      "是否避免不必要的抽象？",
+      "数据契约是否清楚？",
+      "迁移与回滚风险是否已被理解？"
+    ]],
+    ["security", "安全", [
+      "输入验证",
+      "身份验证与授权",
+      "密钥处理",
+      "注入风险",
+      "文件与网络边界",
+      "敏感数据的记录行为",
+      "依赖包与供应链风险"
+    ]],
+    ["test", "测试", [
+      "是否有针对预期行为的测试？",
+      "回归风险是否已涵盖？",
+      "CI 相关指令是否通过？",
+      "UI 屏幕截图是否已审查（如适用）？"
+    ]],
+    ["code_review", "Code Review", [
+      "Diff 够小",
+      "摘要清楚",
+      "已附上证据",
+      "审查发现已解决或已记录",
+      "已记录人工验收"
+    ]]
   ];
 
   /* ── 谁负责勾什么 ──
@@ -332,10 +387,17 @@
       .filter(function (k) { return req.indexOf(k) >= 0; });
   }
 
+  /* 三种，不是两种。中间那种最容易被压扁，也正是「我无法判断」的来源：
+       human            —— 你自己判断（产品意图、验收标准，本来就是你的领域）
+       agent_then_human —— **agent 先审出结论，你读结论后拍板**（高风险的架构／安全）
+       agent            —— agent 负责，你不用管 */
   function gateOwner(tk, key) {
     if (HUMAN_GATES.indexOf(key) >= 0) return "human";
-    if (tk.risk === "high" && HUMAN_GATES_HIGH.indexOf(key) >= 0) return "human";
+    if (tk.risk === "high" && HUMAN_GATES_HIGH.indexOf(key) >= 0) return "agent_then_human";
     return "agent";
+  }
+  function needsYou(owner) {
+    return owner === "human" || owner === "agent_then_human";
   }
   var LINKS = [
     ["featureSpec", "功能规格书"], ["taskCard", "任务卡"], ["screenSpec", "画面规格"],
@@ -589,12 +651,44 @@
   }
   function fCheck(label, path, value, o) {
     o = o || {};
-    var cls = "chk" + (o.dim ? " chk-na" : "") + (o.owner === "human" ? " chk-human" : "");
-    // 👤 标出「只有你能勾」的项 —— 20 个字段长得一样时，人不知道该动哪个
-    var mark = o.owner === "human" ? '<span class="chk-who" title="只有你能勾">👤</span>' : "";
-    return '<label class="' + cls + '"><input type="checkbox" data-field="' + path +
+    var yours = needsYou(o.owner);
+    var cls = "chk" + (o.dim ? " chk-na" : "") + (yours ? " chk-human" : "");
+    // 👤 标出「需要你拍板」的项 —— 20 个字段长得一样时，人不知道该动哪个。
+    // 注意它不等于「你自己去做审查」：agent_then_human 的项要 agent 先出结论。
+    var mark = yours ? '<span class="chk-who" title="需要你拍板">👤</span>' : "";
+    var box = '<label class="' + cls + '"><input type="checkbox" data-field="' + path +
       '" data-kind="bool"' + (value ? " checked" : "") + ">" + mark + "<span>" + label +
       (o.note ? '<span class="chk-note">' + o.note + "</span>" : "") + "</span></label>";
+    if (!o.info) return box;
+    // ⓘ 放在 label 外，否则点它会顺带切换复选框
+    return '<div class="chk-row">' + box +
+      '<button type="button" class="gate-i" data-gate-info="' + o.info +
+      '" title="这一关查什么">ⓘ</button></div>';
+  }
+
+  /** 展开某一关的说明：查什么、谁出结论、谁拍板、还没结论时你该说什么。 */
+  function gateInfoHtml(tk, key) {
+    var g = GATES.filter(function (p) { return p[0] === key; })[0];
+    if (!g) return "";
+    var owner = gateOwner(tk, key);
+    var isReq = requiredGates(tk).indexOf(key) >= 0;
+    var who = {
+      human:
+        "<b>你判断。</b>这是产品意图与验收标准的问题，agent 不该代你下结论。",
+      agent_then_human:
+        "<b>agent 先审出结论，你再拍板。</b>让它跑 <span class=\"mono\">security-maintainability-review</span>，" +
+        "产出「发现的问题／影响／建议修法／批准建议」，你读完决定采纳还是打回。" +
+        "<b>没有结论之前不用勾</b>——可以直接说「让 claude 审一下这张卡的" + g[1] + "」。",
+      agent:
+        "<b>agent 负责。</b>它审完自己勾，你不用管。"
+    }[owner];
+    return '<div class="gate-info">' +
+      '<div class="gate-info-head">「' + g[1] + '」这一关查什么' +
+      (isReq ? "" : '<span class="chk-note"> · 这张卡不需要这一关</span>') + "</div>" +
+      "<ul>" + g[2].map(function (c) { return "<li>" + escapeHtml(c) + "</li>"; }).join("") + "</ul>" +
+      '<div class="gate-info-who">' + who + "</div>" +
+      '<div class="gate-info-src">出处：ai/process/review-gates.md（界面只是把它呈现出来）</div>' +
+      "</div>";
   }
   function fArea(label, path, value, kind, placeholder) {
     return '<div class="fld fld-wide"><span class="fld-label">' + label + "</span>" +
@@ -710,7 +804,7 @@
       }).join("") + "</div></div>" +
 
       '<div><span class="modal-section-label">审查关卡 Gates ' + tallyRequired(tk) +
-      '<span class="sect-hint">按风险与分轨定，👤 只有你能勾</span></span>' +
+      '<span class="sect-hint">按风险与分轨定 · 点 ⓘ 看这关查什么</span></span>' +
       '<div class="chk-grid">' + GATES.map(function (p) {
         var req = requiredGates(tk);
         var isReq = req.indexOf(p[0]) >= 0;
@@ -720,9 +814,11 @@
         return fCheck(p[1], "gates." + p[0], checked, {
           owner: isReq ? gateOwner(tk, p[0]) : null,
           note: note,
-          dim: !isReq && !checked
+          dim: !isReq && !checked,
+          info: p[0]
         });
-      }).join("") + "</div></div>" +
+      }).join("") + "</div>" +
+      (openGate ? gateInfoHtml(tk, openGate) : "") + "</div>" +
 
       '<div><span class="modal-section-label">关联文档</span><div class="fld-grid">' +
       LINKS.map(function (p) { return fInput(p[1], "links." + p[0], tk.links[p[0]]); }).join("") +
@@ -755,7 +851,7 @@
   function closeModal() {
     var overlay = document.getElementById("modal-overlay");
     overlay.classList.remove("is-open");
-    setTimeout(function () { overlay.hidden = true; openId = null; }, 150);
+    setTimeout(function () { overlay.hidden = true; openId = null; openGate = null; }, 150);
   }
 
   function showToast(msg, isError) {
@@ -886,6 +982,13 @@
 
     if (e.target === document.getElementById("modal-overlay")) { closeModal(); return; }
     if (e.target.id === "modal-close-btn") { closeModal(); return; }
+
+    var gi = e.target.closest("[data-gate-info]");
+    if (gi && openId) {
+      openGate = openGate === gi.dataset.gateInfo ? null : gi.dataset.gateInfo;
+      reopenModal(openId);
+      return;
+    }
 
     var kindBtn = e.target.closest(".kind-pick button[data-kind]");
     if (kindBtn) {

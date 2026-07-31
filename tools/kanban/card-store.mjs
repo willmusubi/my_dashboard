@@ -63,10 +63,27 @@ export function requiredGates(card) {
   return GATE_KEYS.filter((k) => req.includes(k)); // 按 GATE_KEYS 的固定顺序返回
 }
 
-/** 这一项该由谁勾。用于界面上标出「等你的项」，以及提醒 agent 别越权。 */
+/**
+ * 这一关谁出结论、谁拍板。三种，不是两种——中间那种最容易被压扁：
+ *
+ *   "human"            人自己判断。product（这个问题值得解决吗）、ui（符合产品意图吗）
+ *                      本来就是人的领域，agent 连结论都不该代写。
+ *   "agent_then_human" **agent 先审出结论，人读结论后拍板**。review-gates.md：
+ *                      架构「架构 agent，高风险任务再加上人工审查」、
+ *                      安全「安全性审查 agent，高风险任务需人工批准」。
+ *                      agent 是第一批准者，人是高风险时追加的一层。
+ *                      security-maintainability-review 的输出末行就是「批准建议：
+ *                      批准 | 要求修改 | 阻挡」——agent 给建议，人拍板。
+ *   "agent"            agent 负责。test、code_review，以及低风险卡的架构／安全。
+ *
+ * 曾经把中间那种也返回 "human"，界面于是显示成「👤 只有你能勾」，等于要求人
+ * 凭空判断 OWASP Top 10——而那本来是 agent 该先做的事。
+ */
 export function gateOwner(card, key) {
   if (HUMAN_GATES.includes(key)) return "human";
-  if (card && card.risk === "high" && HUMAN_GATES_WHEN_HIGH_RISK.includes(key)) return "human";
+  if (card && card.risk === "high" && HUMAN_GATES_WHEN_HIGH_RISK.includes(key)) {
+    return "agent_then_human";
+  }
   return "agent";
 }
 
@@ -620,11 +637,15 @@ export function renderCardForAgent(card, { maxItems = 8 } = {}) {
     "，审查关卡 " + gp.done.length + "/" + gp.required.length;
   if (gp.missing.length) {
     const mine = gp.missing.filter((k) => gateOwner(card, k) === "agent");
+    const both = gp.missing.filter((k) => gateOwner(card, k) === "agent_then_human");
     const human = gp.missing.filter((k) => gateOwner(card, k) === "human");
     const bits = [];
     if (mine.length) bits.push("你要过：" + mine.join("、"));
-    // 这几关只有人能批，不要自己勾——勾了等于把代理输出当成批准。
-    if (human.length) bits.push("等人批（不要自己勾）：" + human.join("、"));
+    // 高风险的架构／安全：你先跑审查出结论（含「批准建议」），人读结论后拍板。
+    // 不要自己勾——那等于把自己的建议当成批准。
+    if (both.length) bits.push("你先审出结论、再交给人拍板：" + both.join("、"));
+    // product／ui 是人自己的判断，你连结论都不该代写。
+    if (human.length) bits.push("等人判断（不要自己勾）：" + human.join("、"));
     out += "（" + bits.join("；") + "）";
   }
   out += "\n";

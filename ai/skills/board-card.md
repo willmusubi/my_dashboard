@@ -45,9 +45,14 @@ node tools/kanban/cli.mjs comment <ID> --kind blocker   --text "..."
 node tools/kanban/cli.mjs stage <ID> implementing   # 再 verify，再 done
 ```
 
-**`gates` 里 `product` 和 `ui` 只有人能勾，你不要自己勾**——那等于把自己的输出
-当成批准。高风险卡的 `architecture` / `security` 同理。`cli.mjs show` 的输出会
-直接告诉你哪几关归你、哪几关在等人。
+**`gates` 分三种归属**，`cli.mjs show` 的输出会直接告诉你这张卡的情况：
+
+- **你要过**：`test` / `code_review`，以及低风险卡的 `architecture` / `security`。审完自己勾。
+- **你先审出结论、再交给人拍板**：高风险卡的 `architecture` / `security`。
+  跑 `security-maintainability-review`，产出「发现的问题／影响／建议修法／**批准建议**」，
+  写进卡片，然后**停下来等人**。你给的是建议，不是批准，**不要自己勾**。
+- **等人判断（不要自己勾，也不要代写结论）**：`product` / `ui`。
+  「这个问题值得解决吗」「符合产品意图吗」是人的领域。
 
 `gates` 也**不需要勾满 6 项**：要过哪几关由卡片的 `risk` 和 `track` 决定
 （规则见 `ai/process/kanban.md`）。别看到「3/6」就以为还差 3 项。
