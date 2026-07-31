@@ -1,0 +1,63 @@
+{
+  "id": "DASH-022",
+  "title": "install 会删掉目标项目自己放在 kit 目录里的文件",
+  "content": "目标：装 kit 不得动目标项目自己的文件。\n\n背景：准备把这套装到 three_kingdoms_traveler 之前做勘察，发现 refresh() 对目录是\n`rm -rf` 再 `cp -R`——等于假设 kit 目录里全是 kit 的东西。实际上项目会往里加自己的。\n对 tkt 实测会删掉 6 个：.claude/skills/{move-naming,script-pipeline}、\nai/process/source-inspirations.md、ai/templates/kanban-card.md、\nai/skills/{move-naming.md,script-pipeline.md}。其中两个 SKILL.md 当时还是未提交状态。\n虽然备份到 .kanban-backup-<时间戳>/，但从工作树里静默消失是不可接受的——\n没人会去翻备份，只会发现东西不见了。\n\n顺带第二个问题：结尾提示让人把 package.json 的 test 改成 bash tools/kanban/test.sh。\ntkt 的 test 是 vitest run（它真正的测试），照做会毁掉它。\n\n非目标：不改 project-owned 的判定范围，不动备份机制。\n\n验收标准：\n- kit 目录逐文件合并，kit 没有的文件一律不碰，并逐条报告「保留项目自有」\n- kit 文件本身仍然照常刷新\n- 目标已有 test 脚本时，改建议 kanban:test 并明确说不要覆盖\n- 以上三条都有回归测试守住\n\n允许改的文件：scripts/install-into-project.sh, tools/kanban/test.sh\n验证命令：造一个含自有文件、且已有 test 脚本的假项目，装完断言自有文件仍在",
+  "stage": "verify",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-08-01",
+  "updatedAt": "2026-08-01T00:20:00+07:00",
+  "rev": 1,
+  "epic": "分发能力",
+  "userStory": "安全分发",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": false
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "scripts/install-into-project.sh",
+    "tools/kanban/test.sh"
+  ],
+  "evidence": {
+    "commands": [
+      "对 tkt 做只读比对：comm -23 列出 6 个会被删除的项目自有文件",
+      "造假项目（含 ai/process/proj-own.md、.claude/skills/proj-own/、test=vitest run）装一次",
+      "断言：两个自有文件仍在、kit 的 workflow.md 也装进去了、输出含「保留项目自有」、提示改成 kanban:test",
+      "npm test → 120 项断言全绿（单元 76 + 集成 44，新增 5 项）"
+    ],
+    "findings": [
+      "这个 bug 只在「目标项目往 kit 目录里加过东西」时才显形。我自己的 my_dashboard 从没加过，所以在源项目里永远测不出来——又是一个只在分发场景才出现的静默破坏，和 DASH-019 的 hook 前缀是同一类。",
+      "修完之后输出会变得很吵（ai/process 一个目录就十几行），所以目录改成只逐条打印「新建/覆盖/保留项目自有」这些真事件，「相同」聚合成一行汇总。静默保留和静默删除一样糟，必须说出来。",
+      "自己的改动里又踩了一个 bash 坑：say \"...（$EXIST_TEST）...\" 里紧跟全角「）」，bash 把多字节字符当成变量名的一部分，set -u 下直接 unbound variable。写 ${EXIST_TEST} 才对。中文文案里引用变量一律加花括号。",
+      "结尾提示原本假设目标是个空项目。真实项目大多已经有 test、有自己的 scripts/——分发脚本的提示必须先看目标长什么样，不能照本宣科。"
+    ],
+    "residual": "**要人看**：这张卡按项目规则算高风险（涉及文件删除），架构与安全两关是 agent 先审、人再拍板。我这边的判断是：改动把 rm -rf 的作用域从「整个目录」收窄到「kit 明确拥有的单个文件」，风险是降低的；没有引入新的路径拼接或外部输入。请你确认后再勾。\n\n**不用跟**：目标项目在 kit 目录里放了同名文件时，仍会被 kit 版本覆盖（有备份）。这是对的——同名意味着它在改 kit 的东西，该以 kit 为准。"
+  },
+  "comments": []
+}

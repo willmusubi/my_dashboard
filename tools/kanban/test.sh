@@ -202,6 +202,45 @@ import json;d=json.load(open('$CARDS/$CC.json'))
 print('yes' if any(c['text']=='server 关着写的' for c in d['comments']) else 'no')")" "yes"
 unset KANBAN_CARDS_DIR KANBAN_AGENT
 
+# ── 分发脚本：kit 目录里的项目自有文件必须活下来 ──
+# 实测 three_kingdoms_traveler 在 .claude/skills、ai/process、ai/templates、ai/skills
+# 下各有自有文件。早先 refresh() 整目录 rm -rf 再拷，会把它们静默删掉。
+echo
+echo "══ 分发脚本 ══"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+IT=$(mktemp -d)
+mkdir -p "$IT/ai/process" "$IT/.claude/skills/proj-own"
+echo "项目自己的流程文档" > "$IT/ai/process/proj-own.md"
+echo "项目自己的 skill"   > "$IT/.claude/skills/proj-own/SKILL.md"
+printf '{"scripts":{"test":"vitest run"}}\n' > "$IT/package.json"
+IOUT=$(bash "$REPO_ROOT/scripts/install-into-project.sh" --prefix ZZZ --port 4499 "$IT" 2>&1)
+
+[ -f "$IT/ai/process/proj-own.md" ] \
+  && ok "install 保住 ai/process 下的项目自有文件" \
+  || no "install 删掉了 ai/process 下的项目自有文件" "$IOUT"
+[ -f "$IT/.claude/skills/proj-own/SKILL.md" ] \
+  && ok "install 保住 .claude/skills 下的项目自有 skill" \
+  || no "install 删掉了 .claude/skills 下的项目自有 skill" "$IOUT"
+[ -f "$IT/ai/process/workflow.md" ] \
+  && ok "install 仍把 kit 文件装了进去" \
+  || no "install 没装上 kit 文件" "$IOUT"
+echo "$IOUT" | grep -q "保留项目自有" \
+  && ok "install 逐条报告了保留的项目自有文件" \
+  || no "install 静默保留，没有报告" "$IOUT"
+# 已有 test 脚本的项目不能被建议覆盖它——照抄会毁掉项目真正的测试命令
+echo "$IOUT" | grep -q "kanban:test" \
+  && ok "项目已有 test 时改建议 kanban:test" \
+  || no "仍建议覆盖既有的 test 脚本" "$IOUT"
+# 登记是测试产生的，别留在真实清单里
+python3 - "$REPO_ROOT/distributions.json" "$IT" <<'PY' 2>/dev/null || true
+import json, sys
+p, t = sys.argv[1], sys.argv[2]
+d = json.load(open(p))
+d["distributions"] = [r for r in d["distributions"] if r.get("path") != t]
+with open(p, "w") as f: json.dump(d, f, ensure_ascii=False, indent=2); f.write("\n")
+PY
+rm -rf "$IT"
+
 echo
 echo "通过 ${PASS}，失败 ${FAIL}"
 [ "$FAIL" -eq 0 ]

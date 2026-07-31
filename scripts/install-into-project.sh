@@ -44,7 +44,7 @@ fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP="$TARGET/.kanban-backup-$STAMP"
-declare -i N_NEW=0 N_OVER=0 N_SKIP=0
+declare -i N_NEW=0 N_OVER=0 N_SKIP=0 N_KEEP=0
 
 say() { printf '%s\n' "$1"; }
 run() { [[ "$DRY" -eq 1 ]] || eval "$1"; }
@@ -56,21 +56,51 @@ backup_of() {   # $1 = 目标文件绝对路径
 }
 
 # kit-owned：每次安装都刷新到最新版；覆盖前一定备份。
-refresh() {     # $1 = 相对路径
+# $2 = "quiet" 时不打印「相同」那一行（目录逐文件刷新时用，否则输出会淹没有用信息）
+refresh_file() {   # $1 = 相对路径（文件）
   local from="$SRC/$1" to="$TARGET/$1"
-  [[ -e "$from" ]] || return 0
   if [[ -e "$to" ]]; then
-    if diff -rq "$from" "$to" >/dev/null 2>&1; then
-      say "  相同，跳过    $1"; N_SKIP+=1; return 0
+    if cmp -s "$from" "$to"; then
+      N_SKIP+=1
+      [[ "${2:-}" == "quiet" ]] || say "  相同，跳过    $1"
+      return 0
     fi
     backup_of "$to"
     say "  覆盖（已备份）$1"; N_OVER+=1
-    run "rm -rf \"$to\""
   else
     say "  新建          $1"; N_NEW+=1
   fi
   run "mkdir -p \"$(dirname "$to")\""
-  run "cp -R \"$from\" \"$to\""
+  run "cp \"$from\" \"$to\""
+}
+
+# 目录**逐文件合并**，绝不整目录 rm -rf 再拷。
+# 原因：项目会往 kit 目录里加自己的东西（实测 three_kingdoms_traveler 在
+# .claude/skills、ai/process、ai/templates、ai/skills 下各有自有文件）。
+# 整目录替换会把它们从工作树里静默删掉——备份救得回来，但没人会去看备份。
+refresh() {     # $1 = 相对路径，文件或目录
+  local from="$SRC/$1" to="$TARGET/$1"
+  [[ -e "$from" ]] || return 0
+  if [[ -f "$from" ]]; then refresh_file "$1"; return 0; fi
+
+  local b_new=$N_NEW b_over=$N_OVER b_skip=$N_SKIP b_keep=$N_KEEP
+  local f rel t trel
+  while IFS= read -r f; do
+    rel="${f#"$SRC"/}"
+    refresh_file "$rel" quiet
+  done < <(find "$from" -type f ! -name '.DS_Store' | sort)
+
+  # kit 里没有的，原样留下并且**说出来**——静默保留和静默删除一样糟
+  if [[ -d "$to" ]]; then
+    while IFS= read -r t; do
+      trel="${t#"$TARGET"/}"
+      if [[ ! -e "$SRC/$trel" ]]; then
+        say "  保留项目自有  $trel"; N_KEEP+=1
+      fi
+    done < <(find "$to" -type f ! -name '.DS_Store' | sort)
+  fi
+
+  say "  $1/  新建 $((N_NEW-b_new))，覆盖 $((N_OVER-b_over))，相同 $((N_SKIP-b_skip))，保留项目自有 $((N_KEEP-b_keep))"
 }
 
 # project-owned：目标已有就永不碰。
@@ -148,7 +178,7 @@ else
 fi
 
 say ""
-say "── 汇总：新建 ${N_NEW}，覆盖 ${N_OVER}，跳过 ${N_SKIP} ──"
+say "── 汇总：新建 ${N_NEW}，覆盖 ${N_OVER}，相同 ${N_SKIP}，保留项目自有 ${N_KEEP} ──"
 if [[ "$DRY" -eq 1 ]]; then
   say "这是预演。去掉 --dry-run 才会实际写入。"
 else
@@ -189,10 +219,28 @@ PY
   say "接下来（在目标项目里）："
   say "  1. 确认 tools/kanban/config.json 的 idPrefix 是 ${CUR_PREFIX}、port 是 ${CUR_PORT}"
   say "     —— 前缀**建第一张卡之前**定好，之后再改会让整块看板失效"
+  # 已有 test 脚本的项目照抄这条会毁掉它真正的测试命令（实测 tkt 的是 vitest run）
+  EXIST_TEST="$(python3 -c "
+import json
+try: print(json.load(open('$TARGET/package.json')).get('scripts',{}).get('test',''))
+except Exception: print('')
+" 2>/dev/null)"
   say "  2. package.json 加脚本： \"kanban\": \"node tools/kanban/server.mjs\","
-  say "                          \"test\": \"bash tools/kanban/test.sh\""
+  if [[ -n "$EXIST_TEST" ]]; then
+    say "                          \"kanban:test\": \"bash tools/kanban/test.sh\""
+    # 必须写 ${}：后面紧跟全角「）」，不加花括号时 bash 会把多字节字符
+    # 当成变量名的一部分，在 set -u 下直接报 unbound variable
+    say "     ⚠️  该项目已有 test 脚本（${EXIST_TEST}）——**不要覆盖它**，"
+    say "         看板的测试单独挂在 kanban:test 上。"
+  else
+    say "                          \"test\": \"bash tools/kanban/test.sh\""
+  fi
   say "  3. bash scripts/check-governance.sh   自检"
-  say "  4. npm test                           确认看板可用（跑在临时目录，不碰真实卡片）"
+  if [[ -n "$EXIST_TEST" ]]; then
+    say "  4. npm run kanban:test                确认看板可用（跑在临时目录，不碰真实卡片）"
+  else
+    say "  4. npm test                           确认看板可用（跑在临时目录，不碰真实卡片）"
+  fi
   say "  5. npm run kanban                     打开 http://127.0.0.1:${CUR_PORT}"
   say "  6. hook 要开一个**新的 Claude Code 会话**才生效（本次会话启动时"
   say "     目标项目还没有 .claude/settings.json，配置 watcher 没在监视它）"
