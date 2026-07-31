@@ -113,6 +113,10 @@
   .lane-gauge.is-over { background: var(--crit); color: #fff; }
   .lane-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
   .lane-empty { font-size: 11.5px; color: var(--ink-faint); padding: 10px 2px; }
+  .lane-sub { font-size: 10.5px; color: var(--ink-faint); margin-top: 2px; }
+  /* done 的折叠入口。折叠只是不渲染——卡片一张没少，展开就全在 */
+  .lane-more { border: none; background: var(--surface-sunken); color: var(--ink-dim); border-radius: 8px; padding: 7px 8px; font-size: 11.5px; font-weight: 600; text-align: center; }
+  .lane-more:hover { color: var(--accent); background: var(--accent-soft); }
   .lane-add-btn { border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-faint); border-radius: 10px; padding: 8px; font-size: 12px; font-weight: 600; text-align: center; }
   .lane-add-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
   .lane-add-form { display: flex; flex-direction: column; gap: 6px; }
@@ -294,12 +298,23 @@
   var EPICS = [];
   var openId = null;
   var openGate = null;   // 当前展开说明的那一关，一次只展开一个
+  var DONE_VISIBLE = 8;  // done 默认只渲染最近几张，其余折叠（不是归档，数据一张没动）
+  var doneExpanded = false;
   var currentView = "board";
 
   function stageIndex(id) { for (var i = 0; i < STAGES.length; i++) if (STAGES[i].id === id) return i; return -1; }
   function getTicket(id) { return TICKETS.filter(function (x) { return x.id === id; })[0]; }
+  /** done 按完成时间倒序（你想看的是「最近做完了什么」，手动排序对它没有意义）；
+   *  其余车道按 order —— 那里的先后是真的有含义的。 */
   function ticketsByStage(id) {
-    return TICKETS.filter(function (x) { return x.stage === id; }).sort(function (a, b) { return a.order - b.order; });
+    var list = TICKETS.filter(function (x) { return x.stage === id; });
+    if (id === "done") {
+      return list.sort(function (a, b) {
+        return String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")) ||
+          b.id.localeCompare(a.id);
+      });
+    }
+    return list.sort(function (a, b) { return a.order - b.order; });
   }
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -528,14 +543,32 @@
     var items = ticketsByStage(stage.id);
     var cap = WIP_CAPS[stage.id];
     var over = cap && items.length > cap;
+    // 徽章始终显示总数。折叠只是不渲染，卡片一张没少——显示成 8 会让人以为卡丢了。
     var gauge = cap ? items.length + " / " + cap : String(items.length);
-    var body = items.length ? items.map(cardHtml).join("") : '<div class="lane-empty">— 没有卡片 —</div>';
+
+    // done 会一直堆积（不该限流），但全渲染到 100 张这一栏就废了。
+    // 折叠不是归档：数据一张没动，展开就全在。
+    var hidden = 0;
+    var shown = items;
+    if (stage.id === "done" && !doneExpanded && items.length > DONE_VISIBLE) {
+      shown = items.slice(0, DONE_VISIBLE);
+      hidden = items.length - DONE_VISIBLE;
+    }
+
+    var body = items.length ? shown.map(cardHtml).join("") : '<div class="lane-empty">— 没有卡片 —</div>';
+    if (stage.id === "done" && items.length > DONE_VISIBLE) {
+      body += '<button type="button" class="lane-more" data-toggle-done="1">' +
+        (doneExpanded ? "收起，只看最近 " + DONE_VISIBLE + " 张"
+                      : "还有 " + hidden + " 张已完成 · 展开") + "</button>";
+    }
+
+    var sub = stage.id === "done" ? '<div class="lane-sub">按完成时间排序</div>' : "";
     return (
       '<div class="lane" data-stage="' + stage.id + '" style="border-top: 3px solid ' + stage.color + '">' +
       '<div class="lane-head">' +
       '<div class="lane-title-row"><span class="lane-title">' + stage.label + "</span>" +
       '<span class="lane-gauge tabular' + (over ? " is-over" : "") + '">' + gauge + "</span>" +
-      "</div></div>" +
+      "</div>" + sub + "</div>" +
       '<div class="lane-body" data-lane-body="' + stage.id + '">' + body +
       '<button type="button" class="lane-add-btn" data-add-to="' + stage.id + '">+ 新增卡片</button>' +
       "</div></div>"
@@ -879,6 +912,7 @@
 
   function commitDrop() {
     var changed = [];
+    var rerender = false;
     document.querySelectorAll(".lane").forEach(function (lane) {
       var stageId = lane.dataset.stage;
       var ids = Array.prototype.map.call(lane.querySelectorAll(".ticket-card"), function (el) { return el.dataset.id; });
@@ -886,25 +920,35 @@
         var tk = getTicket(id);
         if (!tk) return;
         var newOrder = i + 1;
-        if (tk.stage !== stageId || tk.order !== newOrder) {
+        var stageChanged = tk.stage !== stageId;
+        // done 按 updatedAt 排序，内部顺序不落盘：否则拖一下就 bumpRev，
+        // 既产生「只有 rev 变化」的 git diff，重新渲染时那张卡还会跳到顶部。
+        if (stageId === "done" && !stageChanged) {
+          if (tk.order !== newOrder) rerender = true;   // 视觉上弹回原位
+          return;
+        }
+        if (stageChanged || tk.order !== newOrder) {
           tk.stage = stageId;
           tk.order = newOrder;
           changed.push(tk);
         }
       });
     });
-    if (changed.length) {
-      saveBulk(changed).then(function (resp) {
-        // 必须用服务端返回的版本更新本地 rev，否则下一次拖拽会带着旧 rev 撞 409
-        (resp.cards || []).forEach(function (saved) {
-          var tk = getTicket(saved.id);
-          if (tk) Object.keys(saved).forEach(function (k) { tk[k] = saved[k]; });
-        });
-      }).catch(function (err) {
-        if (err && err.status === 409) return;   // onConflict 已经重载过了
-        loadAll().then(renderAll);
-      });
+    if (!changed.length) {
+      if (rerender) renderAll();
+      return;
     }
+    saveBulk(changed).then(function (resp) {
+      // 必须用服务端返回的版本更新本地 rev，否则下一次拖拽会带着旧 rev 撞 409
+      (resp.cards || []).forEach(function (saved) {
+        var tk = getTicket(saved.id);
+        if (tk) Object.keys(saved).forEach(function (k) { tk[k] = saved[k]; });
+      });
+      renderAll();   // done 按 updatedAt 排，刚拖进来的那张要重排到最前
+    }).catch(function (err) {
+      if (err && err.status === 409) return;   // onConflict 已经重载过了
+      loadAll().then(renderAll);
+    });
   }
 
   /* ── events ── */
@@ -982,6 +1026,12 @@
 
     if (e.target === document.getElementById("modal-overlay")) { closeModal(); return; }
     if (e.target.id === "modal-close-btn") { closeModal(); return; }
+
+    if (e.target.closest("[data-toggle-done]")) {
+      doneExpanded = !doneExpanded;
+      renderAll();
+      return;
+    }
 
     var gi = e.target.closest("[data-gate-info]");
     if (gi && openId) {

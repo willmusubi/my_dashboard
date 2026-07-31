@@ -8,8 +8,8 @@
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-07-30",
-  "updatedAt": "2026-07-31T10:52:13+07:00",
-  "rev": 5,
+  "updatedAt": "2026-07-31T11:08:54+07:00",
+  "rev": 9,
   "epic": "看板可用性",
   "userStory": "数据完整性",
   "track": "backend",
@@ -25,10 +25,10 @@
     "human_approval_recorded": true
   },
   "gates": {
-    "product": false,
+    "product": true,
     "ui": false,
     "architecture": true,
-    "security": false,
+    "security": true,
     "test": true,
     "code_review": true
   },

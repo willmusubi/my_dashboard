@@ -1,0 +1,89 @@
+{
+  "id": "DASH-018",
+  "title": "done 车道折叠 + 按完成时间倒序，写明删卡规则",
+  "content": "目标：done 堆到 50 张时这一栏仍然有用；同时把「什么时候能删卡」写清楚。\n\n背景：用户问「卡片堆积到右边应该全部显示吗？什么时候需要删除卡片？」\nticketsByStage 返回车道全部卡片，WIP_CAPS 只覆盖 implementing/verify，done 无上限\n（这是对的，done 不该限流）。但 17 张已经要滚动，100 张后这一栏就废了——\n而那些卡的价值恰恰在于「能被翻到」。「显示」和「保存」被混在一起了。\n\n这 17 张 done 卡带着 17 组验证命令、17 组 findings、16 条 residual、28 条人机决策\n留言，3 张被 dependsOn 引用。删一张 = 删掉那段工作的全部记录。\n\n非目标：\n- 不加 archived 字段或第七条车道（那要求人做「归档」动作——又一个不会被执行的流程）\n- 不加删卡护栏（先把规则写清楚）\n\n验收标准：\n- done 按 updatedAt 倒序，默认显示最近 8 张，其余折叠\n- 车道头徽章仍显示总数（不是显示出来的数量）\n- done 内部拖动不落盘（否则 bumpRev 产生只有 rev 变化的 git diff）\n- 从别的车道拖进 done 会重排到最前\n- kanban.md 与 board-card.md 写明删卡判据\n\n允许改的文件：tools/kanban/index.html, ai/process/kanban.md, ai/skills/board-card.md\n验证命令：npm test + 浏览器实测折叠与两种拖拽",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": false,
+  "createdAt": "2026-07-31",
+  "updatedAt": "2026-07-31T11:30:04+07:00",
+  "rev": 7,
+  "epic": "看板可用性",
+  "userStory": "字段可编辑",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": true,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "tools/kanban/index.html",
+    "ai/process/kanban.md",
+    "ai/skills/board-card.md"
+  ],
+  "evidence": {
+    "commands": [
+      "npm test → 115 项断言全绿（纯前端改动，服务端未变）",
+      "bash scripts/check-governance.sh → passed",
+      "浏览器实测折叠 / 展开 / 徽章 / 排序",
+      "合成 DragEvent 实测两种拖拽路径的落盘行为"
+    ],
+    "findings": [
+      "关键区分是「显示」和「保存」。done 该一直堆（它是审计轨迹），但不该全渲染。折叠不是归档——数据一张没动，徽章仍显示总数，展开就全在，而且不需要任何人做「归档」这个动作。",
+      "done 按 updatedAt 倒序之后必须配套改 commitDrop：内部拖动若照常落盘，bumpRev 会更新 updatedAt，那张卡就会跳到顶部，既「拖了不听话」又产生只有 rev 变化的 git diff。改成 stage 未变就不写、只重新渲染让它弹回。",
+      "删卡的判据是「这张卡上有没有别处不存在的信息」。删除本身是安全的（handleDelete 会清 dependsOn 引用不会锁死车道），但那条依赖关系的历史也一并消失。「git 里还有」不是理由——没人会去 git log --follow 翻一张卡，「数据还在」和「查得到」是两回事。",
+      "CDP 的 left_click_drag 不触发 HTML5 拖拽（和 DASH-002 里记的 macOS 原生 select 是同类问题），改用合成 DragEvent 直接派发到 lane 上测 commitDrop，反而更精准——能数出发了几次 PUT。"
+    ],
+    "residual": "**不用跟**：DONE_VISIBLE 写死为 8，没做成可配置。单人用足够，真嫌少直接改常量。触发重新评估的条件：分发到别的项目后有人反馈这个数字不合适。"
+  },
+  "comments": [
+    {
+      "id": "c-20260731T113004-6e89",
+      "at": "2026-07-31T11:30:04+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-31T11:30:04+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "折叠实测：done 渲染 8 张、徽章显示 17、折叠行「还有 9 张已完成 · 展开」；点开变 17 张、文案变「收起，只看最近 8 张」；最上面一张确认是 updatedAt 最新的那张。"
+    },
+    {
+      "id": "c-20260731T113004-807f",
+      "at": "2026-07-31T11:30:04+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-31T11:30:04+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "拖拽实测（用合成 DragEvent，CDP 的鼠标事件不触发 HTML5 拖拽）：verify→done 故意插到第 4 位 → 发出 1 次 PUT、落盘、重排到最上面；done 内部拖动 → 发出 0 次 PUT、rev 9→9 未变、弹回原位。"
+    }
+  ]
+}
