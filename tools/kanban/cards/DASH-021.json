@@ -1,0 +1,79 @@
+{
+  "id": "DASH-021",
+  "title": "修复深色模式：原生控件跟着系统变深，页面其余部分还是浅色",
+  "content": "目标：系统处于深色模式时，整块看板都是深色且可读，而不是白页面上嵌着几个黑框。\n\n背景：人截图反馈「有些是灰黑色看不清楚」。根因是 index.html 第 6 行声明了\n<meta name=\"color-scheme\" content=\"light dark\">——等于告诉浏览器本页支持深色，\n于是系统深色模式下，所有**没显式写 background/color 的原生控件**由浏览器按深色画：\n标题输入框、描述框、留言框、新增卡片输入框、以及 checkbox 的未勾选方块。\n而其余元素全部显式用 var(--surface)=#ffffff，所以页面本体仍是白的。\n白页面 + 深色原生控件 = 截图里那个样子。那个纯黑的「产品」勾选框就是这么来的。\n\n非目标：不改任何布局、字号、交互。不重画视觉，只补深色的一套值。\n\n验收标准：\n- 系统深色模式下整块看板为深色，原截图里三处不可读的地方都可读\n- 浅色模式的观感与改动前完全一致（既有 token 值一个都不许动）\n- 深色下人(琥珀)与 AI(蓝)的身份色仍一眼分得开——这是本产品的核心语义\n\n允许改的文件：tools/kanban/index.html\n验证命令：浏览器实测 + 计算样式取值 + git diff 确认既有 token 未被改动",
+  "stage": "verify",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-31",
+  "updatedAt": "2026-07-31T23:30:52+07:00",
+  "rev": 2,
+  "epic": "看板可用性",
+  "userStory": "视觉质量",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": false
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "tools/kanban/index.html"
+  ],
+  "evidence": {
+    "commands": [
+      "浏览器实测（系统深色模式）：body 背景 rgb(14,17,22) / 前景 rgb(230,234,241)",
+      "标题输入框 rgba(0,0,0,0) + 浅色文字（原为浏览器深色默认底）",
+      "描述框与留言框 rgb(23,27,34) + 浅色文字（原为浏览器深色默认底）",
+      "车道顶条 rgb(139,149,165) —— 阶段色经内联 var() 也跟着翻了",
+      "git diff：删除行里没有任何 :root token 定义，既有浅色值未被改动",
+      "npm test → 115 项断言全绿；check-governance passed"
+    ],
+    "findings": [
+      "根因不是「配色没调好」，而是声明了支持深色却没真的实现深色。meta 里写 light dark 是在向浏览器承诺，没兑现就会得到这种半深半浅的结果。",
+      "四个输入框（标题/描述/留言/新增卡片）原本不写 background 与 color，等于把配色交给浏览器默认样式。在浅色系统下看不出问题，一换深色系统就露馅——和这个项目一路在修的那批 bug 同一形态：只在某个环境下才显形。",
+      "有 8 处把 #fff 写死当前景色压在 var(--ink) 背景上。深色模式下 --ink 会翻成接近白色，白字压白底会直接消失。改用 --on-ink token 后两套模式都对。",
+      "JS 里的 6 个阶段色是内联进 style 属性的，media query 管不到内联样式，所以必须改成 var() 引用才能跟着主题走。",
+      "深色不是把浅色反相：饱和色在深底上会「振」，所以强调色统一提亮降饱和，*-soft 那组从近白浅底翻成深色薄染。",
+      "整套改动只翻 token、不重写规则。代价是以后任何写死颜色的新组件都会在深色下露馅——这是刻意留的，让它露馅比让它悄悄错好。"
+    ],
+    "residual": "**要人看**：深色的具体色值（尤其人=琥珀 #e8a04a 与 AI=蓝 #8ea1ff 的区分度）是我定的，没出变体让人选，与「UI 工作必须出 2-3 个变体」的规则有出入。理由是这属于修复不可读，不是重画视觉。若不满意，调 :root 与 dark media 两处 token 即可，规则本身不用动。\n\n**不用跟**：深色下投影几乎不可见，已改用更实的黑色投影撑层次。触发重新评估的条件：有人反馈卡片层次分不清。"
+  },
+  "comments": [
+    {
+      "id": "c-20260731T233052-d884",
+      "at": "2026-07-31T23:30:52+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-31T23:30:52+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "浏览器实测（系统深色模式）：body rgb(14,17,22)/rgb(230,234,241)；标题框由「浏览器深色默认底」变为透明+浅色字；描述框与留言框 rgb(23,27,34)+浅色字；勾选框 accent rgb(142,161,255)；车道顶条 rgb(139,149,165)——阶段色经内联 var() 也跟着翻了。git diff 确认删除行里没有任何 :root token 定义，浅色模式的既有色值一个都没动，三处替换（#fff→--on-ink、focus-ring、overlay）在浅色下完全等值。npm test 115 项全绿。"
+    }
+  ]
+}

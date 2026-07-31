@@ -7,12 +7,20 @@
 <title>治理看板</title>
 <style>
   :root {
+    /* 原生控件（checkbox、select 箭头、滚动条）由浏览器画，认的是这个属性而不是
+       我们的 CSS。不声明的话，系统深色模式下浏览器会把它们画成深色，而页面其余部分
+       仍按我们写死的浅色渲染——白页面配黑输入框。深色模式的覆盖在下面的 media 里。 */
+    color-scheme: light;
+
     --paper: #f5f6f8;
     --surface: #ffffff;
     --surface-sunken: #eef0f3;
     --ink: #14181f;
     --ink-dim: #5b6472;
     --ink-faint: #8890a0;
+    /* 压在 --ink / --crit / --accent 这类实心背景上的前景色。深色模式下 --ink 会翻成
+       接近白色，写死 #fff 的地方会白字压白底直接消失，所以必须走 token。 */
+    --on-ink: #ffffff;
     --line: #dde1e7;
     --line-strong: #c3c9d3;
     --accent: #3446d6;
@@ -25,14 +33,70 @@
     --crit-soft: #fbe8e8;
     --muted: #6b7280;
     --muted-soft: #eceef1;
-    /* 人 vs AI 的身份色 —— 这是本产品的核心语义，不是装饰 */
+    /* 人 vs AI 的身份色 —— 这是本产品的核心语义，不是装饰。
+       深色模式下两者也必须一眼分得开，见下面 media 里的覆盖。 */
     --actor-human: #b45309;
     --actor-agent: #3446d6;
+    /* 车道顶条与阶段圆点。JS 里以 var() 字符串内联引用，好让它们跟着主题走 */
+    --stage-backlog: #5b6472;
+    --stage-blocked: #d23b3b;
+    --stage-ready: #147d6f;
+    --stage-implementing: #3446d6;
+    --stage-verify: #6b46c1;
+    --stage-done: #1f9d6b;
+    --focus-ring: rgba(52, 70, 214, 0.35);
+    --overlay: rgba(20, 24, 31, 0.45);
     --shadow-card: 0 1px 2px rgba(20, 24, 31, 0.06), 0 1px 1px rgba(20, 24, 31, 0.04);
     --shadow-card-hover: 0 6px 20px rgba(20, 24, 31, 0.12);
     --shadow-modal: 0 24px 64px rgba(20, 24, 31, 0.28);
     --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "PingFang TC", "Microsoft YaHei", "Microsoft JhengHei", sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  /* ── 深色模式 ──
+     只翻 token，不重写规则。所以任何新增的组件只要用 token 就自动两套都对；
+     写死颜色的组件则会在这里露馅——这是刻意的。
+
+     深色不是把浅色反相：饱和色在深底上会「振」，所以强调色统一提亮、降饱和，
+     而 *-soft 那组从近白的浅底翻成深色薄染。 */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+
+      --paper: #0e1116;
+      --surface: #171b22;
+      --surface-sunken: #212731;
+      --ink: #e6eaf1;
+      --ink-dim: #a4adbb;
+      --ink-faint: #7c8694;
+      --on-ink: #0e1116;
+      --line: #2a313b;
+      --line-strong: #3d4655;
+      --accent: #8ea1ff;
+      --accent-soft: #1d2444;
+      --good: #4ecf9a;
+      --good-soft: #12301f;
+      --warn: #e5a83a;
+      --warn-soft: #33270c;
+      --crit: #f2756f;
+      --crit-soft: #3a1b1b;
+      --muted: #98a2b0;
+      --muted-soft: #262c36;
+      --actor-human: #e8a04a;
+      --actor-agent: #8ea1ff;
+      --stage-backlog: #8b95a5;
+      --stage-blocked: #f2756f;
+      --stage-ready: #3fb8a4;
+      --stage-implementing: #8ea1ff;
+      --stage-verify: #b493f0;
+      --stage-done: #4ecf9a;
+      --focus-ring: rgba(142, 161, 255, 0.45);
+      --overlay: rgba(0, 0, 0, 0.66);
+      /* 深底上投影几乎看不见，改用更黑更实的一层，靠它撑出层次 */
+      --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --shadow-card-hover: 0 6px 20px rgba(0, 0, 0, 0.55);
+      --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.7);
+    }
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -51,7 +115,7 @@
   button { cursor: pointer; }
   button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(52, 70, 214, 0.35);
+    box-shadow: 0 0 0 3px var(--focus-ring);
     border-radius: 6px;
   }
   .tabular { font-variant-numeric: tabular-nums; }
@@ -67,7 +131,7 @@
   .view-tabs { display: flex; gap: 4px; background: var(--surface-sunken); border-radius: 10px; padding: 3px; }
   .view-tabs button { border: none; background: transparent; color: var(--ink-dim); font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 8px; transition: background-color .15s ease, color .15s ease; }
   .view-tabs button:hover { color: var(--ink); }
-  .view-tabs button.is-active { background: var(--ink); color: #fff; }
+  .view-tabs button.is-active { background: var(--ink); color: var(--on-ink); }
   .view { display: none; }
   .view.is-active { display: block; }
 
@@ -110,7 +174,7 @@
   .lane-title-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .lane-title { font-size: 13px; font-weight: 700; }
   .lane-gauge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--surface-sunken); color: var(--ink-dim); flex-shrink: 0; }
-  .lane-gauge.is-over { background: var(--crit); color: #fff; }
+  .lane-gauge.is-over { background: var(--crit); color: var(--on-ink); }
   .lane-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
   .lane-empty { font-size: 11.5px; color: var(--ink-faint); padding: 10px 2px; }
   .lane-sub { font-size: 10.5px; color: var(--ink-faint); margin-top: 2px; }
@@ -120,21 +184,23 @@
   .lane-add-btn { border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-faint); border-radius: 10px; padding: 8px; font-size: 12px; font-weight: 600; text-align: center; }
   .lane-add-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
   .lane-add-form { display: flex; flex-direction: column; gap: 6px; }
-  .lane-add-form input { border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 9px; font-size: 12.5px; }
+  .lane-add-form input { border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 9px; font-size: 12.5px; background: var(--surface); color: var(--ink); }
   .lane-add-form .row { display: flex; gap: 6px; }
   .lane-add-form button { border: none; border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 700; }
-  .lane-add-form .save { background: var(--ink); color: #fff; flex: 1; }
+  .lane-add-form .save { background: var(--ink); color: var(--on-ink); flex: 1; }
   .lane-add-form .cancel { background: var(--surface-sunken); color: var(--ink-dim); }
 
   /* ── modal ── */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(20, 24, 31, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 5vh 20px; overflow-y: auto; z-index: 100; opacity: 0; transition: opacity .15s ease; }
+  .modal-overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: flex-start; justify-content: center; padding: 5vh 20px; overflow-y: auto; z-index: 100; opacity: 0; transition: opacity .15s ease; }
   .modal-overlay.is-open { opacity: 1; }
   .modal-overlay[hidden] { display: none; }
   .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 720px; box-shadow: var(--shadow-modal); transform: translateY(8px) scale(0.98); transition: transform .15s ease; }
   .modal-overlay.is-open .modal { transform: translateY(0) scale(1); }
   .modal-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 24px 0; gap: 12px; }
   .modal-id { font-size: 11.5px; color: var(--ink-faint); font-weight: 700; }
-  .modal-title-input { font-size: 18px; font-weight: 700; margin: 4px 0 0; width: 100%; border: none; border-radius: 8px; padding: 4px 6px; margin-left: -6px; }
+  /* 这几个输入框原本不写 background/color，等于把配色交给浏览器默认样式——
+     系统深色模式下就变成深底，而周围一切仍是浅色。控件的配色必须自己定死。 */
+  .modal-title-input { font-size: 18px; font-weight: 700; margin: 4px 0 0; width: 100%; border: none; border-radius: 8px; padding: 4px 6px; margin-left: -6px; background: transparent; color: var(--ink); }
   .modal-title-input:hover, .modal-title-input:focus { background: var(--surface-sunken); }
   .modal-close { border: none; background: var(--surface-sunken); color: var(--ink-dim); width: 30px; height: 30px; border-radius: 8px; font-size: 15px; flex-shrink: 0; }
   .modal-close:hover { color: var(--ink); }
@@ -179,9 +245,9 @@
   .stage-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .modal-body { padding: 18px 24px 24px; display: flex; flex-direction: column; gap: 20px; }
   .modal-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 8px; display: block; }
-  .content-input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; resize: vertical; min-height: 220px; }
+  .content-input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; resize: vertical; min-height: 220px; background: var(--surface); color: var(--ink); }
   .comment { display: flex; gap: 10px; margin-bottom: 12px; }
-  .comment-avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .comment-avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--on-ink); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .comment-name { font-size: 12.5px; font-weight: 700; }
   .comment-time { font-size: 11px; color: var(--ink-faint); font-weight: 400; margin-left: 6px; }
   .comment-text { font-size: 13px; color: var(--ink-dim); margin-top: 2px; line-height: 1.5; white-space: pre-wrap; }
@@ -192,8 +258,8 @@
   .cm-body { min-width: 0; flex: 1; }
   .comment.is-superseded { opacity: 0.5; }
   .comment.is-superseded .comment-text { text-decoration: line-through; }
-  .av-human { background: var(--actor-human, #b45309); }
-  .av-agent { background: var(--actor-agent, var(--accent)); }
+  .av-human { background: var(--actor-human); }
+  .av-agent { background: var(--actor-agent); }
   .cm-kind { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; margin-left: 6px; background: var(--surface-sunken); color: var(--ink-dim); }
   .cm-kind-decision { background: var(--accent-soft); color: var(--accent); }
   .cm-kind-question { background: var(--warn-soft); color: var(--warn); }
@@ -207,16 +273,16 @@
 
   .kind-pick { display: flex; gap: 4px; align-items: center; margin-bottom: 8px; background: var(--surface-sunken); border-radius: 8px; padding: 3px; width: fit-content; }
   .kind-pick button[data-kind] { border: none; background: transparent; color: var(--ink-dim); font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 6px; }
-  .kind-pick button[data-kind].is-picked { background: var(--ink); color: #fff; }
+  .kind-pick button[data-kind].is-picked { background: var(--ink); color: var(--on-ink); }
   .superseding { font-size: 11px; color: var(--crit); font-weight: 700; margin-left: 8px; display: inline-flex; align-items: center; gap: 4px; }
   .superseding button { border: none; background: transparent; color: var(--crit); font-size: 14px; padding: 0 2px; }
 
   .comment-form { display: flex; gap: 8px; align-items: flex-start; }
-  .comment-form textarea { flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; min-height: 40px; resize: vertical; }
-  .comment-form button { border: none; background: var(--ink); color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; align-self: flex-start; }
+  .comment-form textarea { flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; min-height: 40px; resize: vertical; background: var(--surface); color: var(--ink); }
+  .comment-form button { border: none; background: var(--ink); color: var(--on-ink); border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; align-self: flex-start; }
   .modal-footer { display: flex; justify-content: space-between; padding: 0 24px 22px; }
   .danger-btn { border: 1px solid var(--crit-soft); background: var(--crit-soft); color: var(--crit); border-radius: 8px; padding: 7px 14px; font-size: 12.5px; font-weight: 700; }
-  .danger-btn:hover { background: var(--crit); color: #fff; }
+  .danger-btn:hover { background: var(--crit); color: var(--on-ink); }
 
   /* ── roadmap ── */
   .roadmap { padding: 20px 28px 40px; display: flex; flex-direction: column; gap: 20px; max-width: 1100px; }
@@ -244,7 +310,7 @@
   .task-title.is-done { color: var(--ink-dim); text-decoration: line-through; text-decoration-color: var(--line-strong); }
   .no-tasks { font-size: 12px; color: var(--ink-faint); padding: 4px 8px; }
 
-  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; z-index: 200; }
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--ink); color: var(--on-ink); padding: 10px 18px; border-radius: 999px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; z-index: 200; }
   #toast.is-shown { opacity: 1; transform: translateX(-50%) translateY(0); }
   #toast.is-error { background: var(--crit); }
 </style>
@@ -285,12 +351,14 @@
   var ID_PREFIX = "DASH";  // 同上，由 /api/config 带入，供 dependsOn 的提示文字用
 
   var STAGES = [
-    { id: "backlog",       label: "Backlog 待办",      color: "#5b6472" },
-    { id: "blocked",       label: "Blocked",           color: "#d23b3b" },
-    { id: "ready",         label: "Ready 就绪",        color: "#147d6f" },
-    { id: "implementing",  label: "Implementing 进行中", color: "#3446d6" },
-    { id: "verify",        label: "Verify 验证中",      color: "#6b46c1" },
-    { id: "done",          label: "Done 完成",         color: "#1f9d6b" }
+    /* 颜色走 CSS 变量而不是写死色值：这些是内联到 style 属性里的，写死的话
+       深色模式翻不过来（media query 管不到内联样式）。定义见 :root。 */
+    { id: "backlog",       label: "Backlog 待办",      color: "var(--stage-backlog)" },
+    { id: "blocked",       label: "Blocked",           color: "var(--stage-blocked)" },
+    { id: "ready",         label: "Ready 就绪",        color: "var(--stage-ready)" },
+    { id: "implementing",  label: "Implementing 进行中", color: "var(--stage-implementing)" },
+    { id: "verify",        label: "Verify 验证中",      color: "var(--stage-verify)" },
+    { id: "done",          label: "Done 完成",         color: "var(--stage-done)" }
   ];
   var WIP_CAPS = { implementing: 3, verify: 5 };
 
