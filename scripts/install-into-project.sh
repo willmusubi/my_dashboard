@@ -153,6 +153,38 @@ if [[ "$DRY" -eq 1 ]]; then
   say "这是预演。去掉 --dry-run 才会实际写入。"
 else
   [[ "$N_OVER" -gt 0 ]] && say "被覆盖的文件已备份在：$BACKUP"
+
+  # 登记到分发清单，供 scripts/upgrade-all.sh 用。装完不留痕迹的话，过几周
+  # 这边修了 bug 想推过去，就得自己回忆装过哪些项目了。
+  python3 - "$SRC/distributions.json" "$TARGET" "$CFGF" <<'PY'
+import json, sys, datetime
+reg_path, target, cfg_path = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    cfg = json.load(open(cfg_path))          # 以目标实际生效的配置为准，
+except Exception:                            # 而不是命令行参数（config.json 可能是目标已有的）
+    cfg = {}
+today = datetime.date.today().isoformat()
+try:
+    reg = json.load(open(reg_path))
+except Exception:
+    reg = {"distributions": []}
+rows = reg.get("distributions", [])
+for r in rows:
+    if r.get("path") == target:
+        r["lastUpgradedAt"] = today
+        r["prefix"] = cfg.get("idPrefix", r.get("prefix"))
+        r["port"] = cfg.get("port", r.get("port"))
+        break
+else:
+    rows.append({"path": target, "prefix": cfg.get("idPrefix"), "port": cfg.get("port"),
+                 "installedAt": today, "lastUpgradedAt": today})
+reg["distributions"] = sorted(rows, key=lambda r: r["path"])
+with open(reg_path, "w") as f:
+    json.dump(reg, f, ensure_ascii=False, indent=2)
+    f.write("\n")
+print("  已登记到 distributions.json（共 %d 个项目）" % len(rows))
+PY
+
   say ""
   say "接下来（在目标项目里）："
   say "  1. 确认 tools/kanban/config.json 的 idPrefix 是 ${CUR_PREFIX}、port 是 ${CUR_PORT}"
@@ -164,6 +196,10 @@ else
   say "  5. npm run kanban                     打开 http://127.0.0.1:${CUR_PORT}"
   say "  6. hook 要开一个**新的 Claude Code 会话**才生效（本次会话启动时"
   say "     目标项目还没有 .claude/settings.json，配置 watcher 没在监视它）"
+  say ""
+  say "  这些文件会随 git push 一起走，但不会进构建产物（dist/）。"
+  say "  要开源该项目的话，先读 README「装了之后，发布会带上这些文件吗」一节。"
+  say "  本仓库有改进后，用 scripts/upgrade-all.sh 一次推给所有装过的项目。"
   say ""
   say "  卸载：删掉 ai/、tools/kanban/、.claude/{skills,agents,settings.json}、scripts/check-governance.sh"
 fi

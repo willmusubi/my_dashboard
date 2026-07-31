@@ -1,0 +1,82 @@
+{
+  "id": "DASH-020",
+  "title": "分发登记 + 批量升级；写清发布时会不会带上看板文件",
+  "content": "目标：装出去之后还能找得回来、升得动，并且事先知道这些文件会不会跟着发布走。\n\n背景：install-into-project.sh 装完**不留任何痕迹**。装了几个项目之后，\n本仓库修了 bug 想推过去，只能靠自己回忆装过哪些——这正是这套东西\n作为「分发源」的定位站不住的地方。\n人另外问：项目发布时会不会把 ai/、tools/kanban/ 带出去？答案分两种且相反，\n每个装了这套的项目都会遇到，属于该写进文档的东西。\n\n非目标：不做共享安装（软链/全局包）。卡片必须随项目走、hook 是项目级、\nclone 下来要能跑，这三条决定了每项目一份是对的，不是将就。\n\n验收标准：\n- install 实际执行成功后登记到 distributions.json；--dry-run 不写\n- 同 path 重复安装只更新 lastUpgradedAt，不产生重复记录\n- upgrade-all.sh 逐条重装；目录不存在只报告跳过、不删记录、不中断其余\n- README 能回答「部署到 Vercel 之后访问网站的人看得到卡片吗」\n\n允许改的文件：scripts/install-into-project.sh, scripts/upgrade-all.sh（新建）,\ndistributions.json（新建）, README.md\n验证命令：装两个临时目录 → dry-run → 真升级 → 删一个再升级 → 重复安装 → npm test",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-07-31",
+  "updatedAt": "2026-07-31T15:40:00+07:00",
+  "rev": 1,
+  "epic": "分发能力",
+  "userStory": "安全分发",
+  "track": "backend",
+  "dependsOn": ["DASH-019"],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "scripts/install-into-project.sh",
+    "scripts/upgrade-all.sh",
+    "distributions.json",
+    "README.md"
+  ],
+  "evidence": {
+    "commands": [
+      "装两个临时目录（AAA/4491、BBB/4492）→ distributions.json 两条，prefix/port 正确",
+      "upgrade-all.sh --dry-run → 逐条预演，全部「相同，跳过」，未写入",
+      "upgrade-all.sh → 成功 2，跳过 0，失败 0",
+      "rm -rf B 后再跑 → 「跳过（目录不存在）」，记录仍是 2 条",
+      "重复安装 A → 仍是 2 条，没产生重复",
+      "npm test → 115 项断言全绿（单元 76 + 集成 39）",
+      "bash scripts/check-governance.sh → passed"
+    ],
+    "findings": [
+      "登记的 prefix/port 从目标的 config.json 读，而不是从命令行参数读。config.json 是 project-owned、已存在就不覆盖，用参数登记会记下一个并未生效的值。",
+      "upgrade-all 不传 --prefix/--port。传了反而危险：会让人以为能借此改目标的前缀，而建卡之后改前缀会让整块看板失效。",
+      "目录不存在不删记录。外置盘没挂、项目临时移走都会命中这一条，自动删记录等于把「我装过它」这个事实也一起丢了。",
+      "bash 3.2 没有 mapfile（macOS 自带的就是 3.2），改用进程替换 + while read。",
+      "发布边界的答案是分叉的：构建产物不会带（打包器只收 src/ 里被 import 的），git push 会带。写文档时必须把两者分开说，笼统答「会」或「不会」都是错的。"
+    ],
+    "residual": "**不用跟**：distributions.json 记的是本机绝对路径，本仓库若将来公开会暴露目录结构。已在 README 写明公开前先看一眼。触发重新评估的条件：本仓库要加 remote 并公开。\n\n**不用跟**：upgrade-all 是串行的，装了很多项目时会慢。目前 0 条记录，等真到十几个项目再说。"
+  },
+  "comments": [
+    {
+      "id": "c-20260731T154000-a3d1",
+      "at": "2026-07-31T15:40:00+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-07-31T15:40:00+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "端到端实测走完全部六步：装两个临时项目 → distributions.json 正确记录 AAA/4491 与 BBB/4492 → --dry-run 逐条预演不写入 → 真升级成功 2 → 删掉 B 后重跑报告「跳过（目录不存在）」且记录保留 2 条 → 重复安装 A 未产生重复。回归 npm test 115 项全绿，check-governance passed。测试记录已清理，distributions.json 现为空清单。"
+    }
+  ]
+}
