@@ -244,6 +244,28 @@ echo "$IOUT" | grep -q "保留项目自有" \
 echo "$IOUT" | grep -q "kanban:test" \
   && ok "项目已有 test 时改建议 kanban:test" \
   || no "仍建议覆盖既有的 test 脚本" "$IOUT"
+
+# 目标里的 kit 文件是符号链接时，cp 会跟着它写穿到项目外面。
+# 老版本整目录 rm -rf 顺带避开了；改成逐文件合并后漏掉，安全审查时才抓出来。
+SLOUT=$(mktemp -d); SLPRJ=$(mktemp -d)
+echo "项目之外的文件，绝对不该被改" > "$SLOUT/outside.md"
+mkdir -p "$SLPRJ/ai/process"
+ln -s "$SLOUT/outside.md" "$SLPRJ/ai/process/workflow.md"
+bash "$INSTALLER" --prefix ZZZ --port 4499 "$SLPRJ" >/dev/null 2>&1
+grep -q "绝对不该被改" "$SLOUT/outside.md" \
+  && ok "kit 文件是符号链接时不会写穿到项目外" \
+  || no "install 跟着符号链接改了项目外的文件" "$(cat "$SLOUT/outside.md")"
+[ -L "$SLPRJ/ai/process/workflow.md" ] \
+  && no "覆盖后仍是符号链接" "still a symlink" \
+  || ok "符号链接被替换成实体文件"
+python3 - "$REPO/distributions.json" "$SLPRJ" <<'PY' 2>/dev/null || true
+import json, sys
+p, t = sys.argv[1], sys.argv[2]
+d = json.load(open(p))
+d["distributions"] = [r for r in d["distributions"] if r.get("path") != t]
+with open(p, "w") as f: json.dump(d, f, ensure_ascii=False, indent=2); f.write("\n")
+PY
+rm -rf "$SLOUT" "$SLPRJ"
 # 登记是测试产生的，别留在真实清单里
 python3 - "$REPO/distributions.json" "$IT" <<'PY' 2>/dev/null || true
 import json, sys

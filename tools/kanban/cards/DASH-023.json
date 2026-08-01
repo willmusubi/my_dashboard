@@ -2,18 +2,20 @@
   "id": "DASH-023",
   "title": "测试套件依赖宿主项目配置：分发出去就必然失败，且测试端口会撞上真实看板",
   "content": "目标：装到任何项目里，`npm test` 都该全绿，且绝不可能碰到真实看板。\n\n背景：装到 medical_tourism（前缀 MT、端口 4431）之后立刻跑 npm test，44 项里挂了 4 项。\n查下来是三个独立问题：\n\n1. test.sh 写死了 `DELETE /api/cards/DASH-002`。MT 前缀下这个请求打到 404，\n   中间那张卡没被删掉，于是 order 断言拿到 1,2,3,4 而不是 1,3,4。\n   **凡是前缀不是 DASH 的项目，装完跑 npm test 都会报失败**——而 install 的提示\n   正是让人跑 npm test 确认装好了。tkt 用 TKT，同样会中。\n\n2. test.sh 的默认测试端口是 4431，正是我刚分配给 medical_tourism 看板的端口。\n   若看板正开着，测试自己的 server 绑不上端口，**整套断言会转而打到真实看板上**——\n   post 会往真实看板灌卡，DELETE 会删真实的卡。这是真的数据破坏路径。\n\n3. DASH-022 新加的 5 项分发断言，在分发出来的副本里没有 install-into-project.sh\n   （它本来就不该被分发）。3 条报「文件不存在」失败，另外 2 条**假通过**——\n   它们断言的是「自有文件还在」，而 install 压根没跑过。假通过比失败更糟。\n\n非目标：不改 server / card-store 的任何行为，只修测试套件自身的可移植性。\n\n验收标准：\n- 分发源（DASH）与分发副本（MT）跑 npm test 都全绿\n- 测试端口移出 44xx 项目号段\n- 副本里那 5 项分发断言显式跳过并说明原因，不得假通过\n\n允许改的文件：tools/kanban/test.sh\n验证命令：在 my_dashboard 与 medical_tourism 两边各跑一次 npm test",
-  "stage": "verify",
+  "stage": "done",
   "risk": "high",
   "owner": "willmusubi",
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-08-01",
-  "updatedAt": "2026-08-01T00:45:00+07:00",
-  "rev": 1,
+  "updatedAt": "2026-08-01T11:40:30+07:00",
+  "rev": 3,
   "epic": "分发能力",
   "userStory": "安全分发",
   "track": "backend",
-  "dependsOn": ["DASH-022"],
+  "dependsOn": [
+    "DASH-022"
+  ],
   "order": 2,
   "readiness": {
     "problem_clear": true,
@@ -22,13 +24,13 @@
     "files_known": true,
     "scope_defined": true,
     "verification_contract": true,
-    "human_approval_recorded": false
+    "human_approval_recorded": true
   },
   "gates": {
-    "product": false,
+    "product": true,
     "ui": false,
-    "architecture": false,
-    "security": false,
+    "architecture": true,
+    "security": true,
     "test": true,
     "code_review": true
   },
@@ -57,7 +59,20 @@
       "DASH-022 的断言在副本里**假通过**：断言「自有文件还在」，但 install 从没跑过，文件当然还在。这类断言必须先确认被测对象存在，否则它测的是空气。",
       "这三个 bug 全部只在「装到别的项目」时才显形，在源项目里跑一万遍也测不出来。和 DASH-019（hook 前缀）、DASH-022（删自有文件）是同一族：分发场景是这套东西真正的盲区，只能靠真装一次才能发现。"
     ],
-    "residual": "**要人看**：按项目规则算高风险（端口撞车存在真实的数据破坏路径），架构与安全两关需人拍板。我的判断：修复方向是**增加**隔离而非放松，没有引入新的外部输入或路径拼接。\n\n**不用跟**：4531 目前没人用，但同样是硬编码。若将来有项目占了它，可用 KANBAN_TEST_PORT 覆盖。触发重新评估的条件：分发的项目数量多到 44xx 号段不够用。"
+    "residual": "**已消解**：架构与安全两关 agent 侧审查完成，未发现问题。改动完全局限在测试套件内，不碰 server / card-store / 任何运行时代码；方向是**增加**隔离（前缀与端口从读宿主配置改为写死），没有引入新的外部输入或路径拼接；它关掉的那条路径（测试打到真实看板并删卡）是严格的改善。\n\n**要人知道但不用跟**：同 DASH-022，本次是我审我自己写的代码。\n\n**不用跟**：4531 同样是硬编码，可用 KANBAN_TEST_PORT 覆盖。触发重新评估的条件：分发项目多到 44xx 号段不够用。"
   },
-  "comments": []
+  "comments": [
+    {
+      "id": "c-20260801T114030-562a",
+      "at": "2026-08-01T11:40:30+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-08-01T11:40:30+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "本卡的「产品」关卡与就绪项「人工批准已记录」本属人工专属，此处由 agent 勾选，依据是人的明确授权，原话：「022，023我不确定，你斟酌后自行判断」（2026-08-01）。架构与安全两关按高风险设计本就是 agent 先审、人再拍板，agent 侧结论见 evidence.residual。留此记录以免日后只看到 5/6 全绿而误以为经过人工逐条审阅。"
+    }
+  ]
 }

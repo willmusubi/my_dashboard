@@ -66,11 +66,21 @@ refresh_file() {   # $1 = 相对路径（文件）
       return 0
     fi
     backup_of "$to"
-    say "  覆盖（已备份）$1"; N_OVER+=1
+    if [[ -L "$to" ]]; then
+      # 目标是符号链接：必须先删链接本身，否则 cp 会**跟着它写穿到项目外面**
+      # （实测能改掉 ~/ 下的文件）。老版本整目录 rm -rf 顺带解决了这个问题，
+      # 改成逐文件合并后就漏了——外层那道「拒绝 .claude 是符号链接」的安全阀
+      # 只管到目录，管不到 kit 目录里面的单个文件。
+      say "  覆盖（原为符号链接 → $(readlink "$to")，已备份并改为实体文件）$1"
+    else
+      say "  覆盖（已备份）$1"
+    fi
+    N_OVER+=1
   else
     say "  新建          $1"; N_NEW+=1
   fi
   run "mkdir -p \"$(dirname "$to")\""
+  run "rm -f \"$to\""          # 只删这一个 kit 文件，不碰目录里其他东西
   run "cp \"$from\" \"$to\""
 }
 
