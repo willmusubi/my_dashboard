@@ -6,6 +6,13 @@
       "port": 4431,
       "installedAt": "2026-08-01",
       "lastUpgradedAt": "2026-08-01"
+    },
+    {
+      "path": "/Users/liutong/Admin/Journey_to_AI/three_kingdoms_traveler",
+      "prefix": "TKT",
+      "port": 4420,
+      "installedAt": "2026-08-01",
+      "lastUpgradedAt": "2026-08-01"
     }
   ]
 }

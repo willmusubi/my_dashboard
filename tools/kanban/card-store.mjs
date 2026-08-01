@@ -214,6 +214,23 @@ function legacyTimeToIso(time, createdAt, index) {
  * 旧留言一律当 note/done —— **不得回溯升格为 decision**。它们写的时候没有
  * 任何机制保证被读到，把它们当成生效中的指令是危险的。
  */
+/**
+ * 旧留言没有 authorKind 字段。无条件默认成 "human" 会**凭空给 AI 写的留言
+ * 制造人的权威**——而「人和 AI 分得开」正是这套东西的前提（agent 不得下决策，
+ * 人写的 comments 是指令、agent 写的是记录）。
+ *
+ * 判定不靠名字猜，靠卡片自己记录的 `agent` 字段：作者就是这张卡的 agent → agent。
+ * 实测 three_kingdoms_traveler 的 10 条旧留言全部 author === card.agent === "claude"
+ * 而 owner 是 willmusubi；my_dashboard 里 36/38 条 agent 留言也符合这个模式。
+ */
+function legacyAuthorKind(raw, card) {
+  const author =
+    typeof raw.author === "string" ? raw.author : typeof raw.name === "string" ? raw.name : "";
+  const agent = card && typeof card.agent === "string" ? card.agent : "";
+  if (author.trim() && agent.trim() && author.trim() === agent.trim()) return "agent";
+  return "human";
+}
+
 export function normalizeComment(raw, card, index) {
   if (!isPlainObject(raw)) return raw; // 交给 validateCard 报错
   const at =
@@ -225,7 +242,7 @@ export function normalizeComment(raw, card, index) {
     id: typeof raw.id === "string" && COMMENT_ID_RE.test(raw.id) ? raw.id : makeCommentId(new Date(at)),
     at,
     author: typeof raw.author === "string" ? raw.author : typeof raw.name === "string" ? raw.name : "",
-    authorKind: AUTHOR_KINDS.includes(raw.authorKind) ? raw.authorKind : "human",
+    authorKind: AUTHOR_KINDS.includes(raw.authorKind) ? raw.authorKind : legacyAuthorKind(raw, card),
     kind,
     status: COMMENT_STATUSES.includes(raw.status)
       ? raw.status

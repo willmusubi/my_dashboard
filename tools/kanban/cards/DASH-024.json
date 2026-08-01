@@ -1,0 +1,64 @@
+{
+  "id": "DASH-024",
+  "title": "旧留言迁移会把 AI 写的留言标成人写的，凭空制造人的权威",
+  "content": "目标：迁移旧看板数据时，不得伪造留言的作者身份。\n\n背景：把 kit 装进 three_kingdoms_traveler 并迁移它 67 张老卡时发现，10 条旧格式留言\n（`{name,time,text}`，没有 authorKind 字段）全部被标成了 `authorKind: \"human\"`——\n因为 normalizeComment 里写死了「没有就当人」。\n\n可这些留言的 author 是 `claude`。其中一条原文是：\n「立卡：范围 3 案已备，等用户 3 选 1。」——毫无疑问是 AI 写的进度记录、在等人做决定。\n把它标成人写的，等于**凭空给 AI 的话制造了人的权威**。而「人和 AI 分得开」是这套\n东西的全部前提：agent 不得下决策、人写的 comments 是指令、agent 写的是记录。\n身份标错，这三条同时失效。\n\n非目标：不回溯把旧留言升格为 decision（那条既有规则保持不变，旧留言一律降为 note）。\n不改显式带了 authorKind 的留言。\n\n验收标准：\n- 没有 authorKind 时，用卡片自己的 agent 字段判定：author === card.agent → agent\n- 判不出来（卡片没有 agent）时保守当 human\n- 显式写了 authorKind 的以它为准\n- tkt 那 10 条迁移后标为 agent\n\n允许改的文件：tools/kanban/card-store.mjs, tools/kanban/test-store.mjs\n验证命令：npm test；重跑 tkt 迁移后统计 author/authorKind 组合",
+  "stage": "verify",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-08-01",
+  "updatedAt": "2026-08-01T13:10:00+07:00",
+  "rev": 1,
+  "epic": "分发能力",
+  "userStory": "安全分发",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": false
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [
+    "tools/kanban/card-store.mjs",
+    "tools/kanban/test-store.mjs"
+  ],
+  "evidence": {
+    "commands": [
+      "tkt 迁移后统计：10 条留言 author='claude' authorKind='human' kind='note' —— 全部标错",
+      "取证：那 10 条的 author 都等于卡片自己的 agent 字段（'claude'），而 owner 是 'willmusubi'",
+      "对照 my_dashboard：36/38 条 agent 留言的 author 与卡片 agent 字段一致，模式成立",
+      "确认 fillDefaults 里 c.agent 在 c.comments 归一化之前赋值，判定拿得到 agent",
+      "npm test → 127 项全绿（单元 81 + 集成 46，新增 5 项）"
+    ],
+    "findings": [
+      "这个 bug 只在**迁移别人的旧数据**时显形。my_dashboard 自己的卡从第一天起就带 authorKind，永远走不到那条默认分支。和 DASH-019/022/023 同一族：分发与迁移是这套东西真正的盲区。",
+      "判定不靠名字白名单（'claude'、'gpt' 之类），靠卡片自己记录的 agent 字段。名字表会漏、会过时；卡片的 agent 字段是那张卡当时真实的作业记录。",
+      "默认值的方向很重要。原来的默认（当人）是**往上**给权限，判错就凭空造出授权；现在判不出来时仍当人，但那是在有 owner 而无 agent 的情况下——此时留言更可能真是人写的。真正的改进是：能判出来时不再瞎猜。",
+      "顺带纠正我在计划里说错的一句：迁移**不会**消解 done 车道的 order 撞号（fillDefaults 只校验 order 不重排）。那个撞号要等人拖动车道时才会被整批 PUT 重排。"
+    ],
+    "residual": "**agent 侧审查结论（高风险，架构+安全待人拍板）**：改动只影响「旧留言缺 authorKind」这一条分支，显式带 authorKind 的路径完全未变；不引入外部输入、不改权限判定本身（appendComment 的 403 规则原样）。方向是从「无条件假设人」改为「有依据才判、无依据仍保守」，是收紧不是放松。同 DASH-022/023，仍是我审我自己写的代码。\n\n**要人知道**：tkt 那 10 条留言的实际内容是 AI 在转述人的决策（例如「三案已由用户拍板」）。标成 agent 是对**作者**的如实记录；它们承载的人的决策不会因此失效，但也确实不再被当成指令读。若你认为其中某几条应当作为人的指令生效，需要你自己在看板上重新以人的身份留言。"
+  },
+  "comments": []
+}

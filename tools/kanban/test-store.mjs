@@ -171,6 +171,31 @@ console.log("── 旧格式迁移 ──");
   truthy("补出的 id 合法且不重复", c.comments[0].id !== c.comments[1].id);
   eq("迁移后 schema 合法", store.validateCard(c), null);
   eq("生效中的人工决策为 0（旧留言不算）", store.liveHumanItems(c, "decision").length, 0);
+  eq("卡片没有 agent 时，作者归属不明 → 保守当人", c.comments.map((x) => x.authorKind), ["human", "human"]);
+}
+{
+  // 旧留言没有 authorKind。无条件默认 human 会凭空给 AI 写的留言制造人的权威，
+  // 而「人和 AI 分得开」是这套东西的前提。实测 tkt 的 10 条旧留言全部
+  // author === card.agent === "claude"，owner 才是真人。
+  const c = store.fillDefaults({
+    id: store.formatId(3),
+    title: "旧卡·作者是本卡 agent",
+    stage: "backlog",
+    risk: "low",
+    owner: "willmusubi",
+    agent: "claude",
+    createdAt: "2026-07-26",
+    order: 1,
+    comments: [
+      { name: "claude", time: "2026-07-26", text: "立卡：范围 3 案已备，等用户 3 选 1。" },
+      { name: "willmusubi", time: "2026-07-26", text: "选第二案。" },
+    ],
+  });
+  eq("作者 == 卡片 agent → 判为 agent", c.comments[0].authorKind, "agent");
+  eq("作者 != 卡片 agent → 判为 human", c.comments[1].authorKind, "human");
+  eq("但仍一律降为 note，不回溯升格为 decision", c.comments.map((x) => x.kind), ["note", "note"]);
+  eq("显式写了 authorKind 就以它为准",
+    store.normalizeComment({ author: "claude", authorKind: "human", text: "x" }, c, 0).authorKind, "human");
 }
 
 console.log("── 未知字段：报错而不是静默丢弃 ──");
