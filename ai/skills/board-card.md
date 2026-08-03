@@ -57,6 +57,32 @@ node tools/kanban/cli.mjs stage <ID> implementing   # 再 verify，再 done
 `gates` 也**不需要勾满 6 项**：要过哪几关由卡片的 `risk` 和 `track` 决定
 （规则见 `ai/process/kanban.md`）。别看到「3/6」就以为还差 3 项。
 
+### 人工关卡：勾了就必须留下授权来源
+
+上面那两类「不要自己勾」是默认规则。**人可以就某张卡明确授权你代勾**——这是人的
+权利，不是你能自行推定的。一旦获得授权，勾选的同时**必须发一条 comment 写明授权
+来自哪里**：原话、时间或对话中的哪句指示。
+
+适用范围：`product` / `ui`、高风险卡的 `architecture` / `security`，
+以及 `readiness.human_approval_recorded`。
+
+```bash
+node tools/kanban/cli.mjs comment <ID> --kind progress --text \
+  "授权留痕：用户 2026-08-03 指示「开卡然后实际操作掉就好」，据此勾 product 与 human_approval_recorded。授权范围仅限本卡。"
+```
+
+**为什么非留不可**：服务端对这几项**没有任何强制力**——agent 一个 PATCH 就能勾满
+全部关卡并推 done，而 `gates` 只是布尔值，不记录谁勾的、什么时候勾的。于是卡片只
+留下了「结果」，没留下「条件」。而授权本身是有条件的（「**得到许可之后**才自签」），
+条件不可见就等于没有：几周后回头看，没人能分辨这一关是人批的还是 agent 自己勾的。
+
+这不是形式主义。DASH-025 的安全审查就是从「MT-001 上 `gates.product` 与
+`human_approval_recorded` 都是 true，卡上却找不到任何人写的痕迹」查起的。
+
+范例见 DASH-025 与 DASH-027 的 `progress` 留言。
+
+授权是**按卡**给的，不会自动延续到下一张卡。拿不准就当作没有授权，按默认规则停下来问。
+
 **填 `evidence.residual` 时，每一条都要让人立刻答得出「现在要不要有人跟」**
 （详见 `ai/process/definition-of-done.md`）：
 

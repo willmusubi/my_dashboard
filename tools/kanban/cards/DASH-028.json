@@ -1,0 +1,84 @@
+{
+  "id": "DASH-028",
+  "title": "board-card.md 立约定：agent 勾人工关卡必须留授权来源",
+  "content": "## 目标\n安全审查发现：`HUMAN_GATES`（product / ui）与 `HUMAN_READINESS`（human_approval_recorded）在写卡路径上零强制——agent 一个 PATCH 就能勾满全部关卡并推 done，且卡上不留任何「谁勾的、什么时候」的痕迹。\n\n用户已决定**不加 403 强制**（「因为便利，我允许 agent 在得到我的许可之后进行自己批准」）。但该决定只消解了「不准勾」，没消解「勾了要留痕」：授权政策是有条件的（**得到许可之后**），而卡片只记录结果、不记录条件是否成立过。MT-001 上 `gates.product=true` + `human_approval_recorded=true` 却找不到人写的留言，就是这个缺口。\n\n## 范围\n- `ai/skills/board-card.md`：在「gates 分三种归属」一节加约定——agent 勾 `product`/`ui`，或勾高风险卡的 `architecture`/`security`，或勾 `human_approval_recorded` 时，**必须同时发一条 comment 写明授权来自哪里**（原话、时间或对话中的指示）。\n- 同步 `.claude/skills/board-card/`（若为独立副本）。\n\n## 非目标\n- 不加服务端强制（用户已明确不要）。\n- 不改 schema、不加 `gatesMeta` 字段（要迁移三个项目 161 张卡，性价比不足；将来若单靠约定不够再评估）。\n- 不改 `card-store.mjs` 的 `gateOwner` / `HUMAN_GATES`。\n\n## 情境包\n- 相关文件：`ai/skills/board-card.md`（「gates 分三种归属」约 48-58 行）、`.claude/skills/board-card/`。\n- 既有先例：DASH-025 已按此约定实际跑过一遍（卡上有两条 progress 留言分别记录 readiness 与 gates 的授权来源），可直接引为范例。\n- 不得触碰：`tools/` 下任何代码。\n\n## 验收标准\n- `board-card.md` 明确写出该约定，且说明「为什么」（授权是有条件的，卡片只记结果不记条件）。\n- 给出可照抄的留言范例。\n- 三个项目的 `ai/skills/board-card.md` 与 `.claude/skills/` 副本一致。\n\n## 验证契约\n- `npm test`（确认没破坏分发用例）\n- `diff` 三个项目的 board-card.md 确认一致",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": true,
+  "createdAt": "2026-08-03",
+  "updatedAt": "2026-08-03T15:21:03+07:00",
+  "rev": 7,
+  "epic": "人机决策通道",
+  "userStory": "agent 读写通道",
+  "track": "n/a",
+  "dependsOn": [],
+  "order": 3,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "编辑 ai/skills/board-card.md：在「gates 分三种归属」之后新增小节「人工关卡：勾了就必须留下授权来源」",
+      "npm test → 单元 93/0；集成 55/0（分发用例未受影响）",
+      "查证 .claude/skills/board-card/SKILL.md 只是指向 ai/skills/board-card.md 的指针，非独立副本——正本改一处即可"
+    ],
+    "findings": [
+      "本卡原范围写「同步 .claude/skills/board-card/（若为独立副本）」，实测不成立：该文件是指针。范围相应缩小，已在卡上留言说明。",
+      "约定写成「默认不要自己勾；人可按卡明确授权，授权后勾选必须同时留 comment 写明来源」，而不是「不准勾」——后者与用户已下的决定冲突。",
+      "文中写明了「为什么非留不可」（服务端零强制、gates 只是布尔值不记谁勾的、授权是有条件的而卡片只记结果），并以 MT-001 为实例——只写规则不写理由的约定，下一个 agent 没有遵守的动机。",
+      "明确「授权按卡给，不自动延续到下一张卡」，堵掉「上次准了这次也算」的推定。"
+    ],
+    "residual": "① 这是纯约定，没有机械强制力——agent 不照做时没有任何东西会拦住它。不用跟：用户已明确否决服务端强制（403）与 gatesMeta 字段（要迁移三个项目 161 张卡）；若将来实际发生过一次「勾了没留痕」，再重新评估加 gatesMeta。② 三个项目的 board-card.md 需靠 install-into-project.sh 保持一致，无自动漂移检测——不用跟，理由同 DASH-025 的残留④。"
+  },
+  "comments": [
+    {
+      "id": "c-20260803T151947-2e08",
+      "at": "2026-08-03T15:19:47+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-03T15:19:47+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户本轮指示「你帮我开卡并且开始修复吧」，涵盖本卡。另：本卡范围里写的「同步 .claude/skills/board-card/（若为独立副本）」经查不成立——该文件只是指向 ai/skills/board-card.md 的指针，正本一处即可，范围相应缩小。"
+    },
+    {
+      "id": "c-20260803T152103-0918",
+      "at": "2026-08-03T15:21:03+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-03T15:21:03+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "关卡勾选留痕：test / code_review 自行勾；product 依用户本轮「开卡并且开始修复」的授权代勾。本卡为纯文档变更，risk=low 无架构/安全关卡。"
+    }
+  ]
+}
