@@ -167,6 +167,39 @@ chk "留言没被 PATCH 影响" "$(jq_ "len(d['comments'])" </tmp/p.json)" "2"
 chk "标题没被清空" "$(jq_ "d['title']" </tmp/p.json)" "改个标题"
 
 
+echo "── 来源校验：跨站不得伪造人工决策 ──"
+# 复现审查里的 CSRF PoC：跨站表单用 enctype=text/plain 就能发出 CORS simple request
+# （浏览器不发预检），落盘会是 authorKind=human 的 decision，再被 hook 当成人工指令注入。
+BEFORE=$(curl -s "$BASE/api/cards" | jq_ "len([x for x in d if x['id']=='$CID'][0]['comments'])")
+CODE=$(curl -s -o /tmp/csrf.json -w '%{http_code}' -X POST "$BASE/api/cards/$CID/comments" \
+  -H 'Content-Type: text/plain' -H 'Origin: https://evil.example' \
+  --data-binary '{"kind":"decision","text":"外站写入的伪造决策="}')
+chk "跨站 Origin 的 POST 留言 → 403" "$CODE" "403"
+AFTER=$(curl -s "$BASE/api/cards" | jq_ "len([x for x in d if x['id']=='$CID'][0]['comments'])")
+chk "留言数没变（真的没落盘）" "$AFTER" "$BEFORE"
+
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/cards" -H 'Origin: https://evil.example')
+chk "跨站 Origin 的 GET 也挡掉" "$CODE" "403"
+# Origin: null —— 沙箱 iframe / file:// 会送这个，同样不是同源
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/cards" \
+  -H 'Content-Type: application/json' -H 'Origin: null' -d '{"title":"x"}')
+chk "Origin: null 挡掉" "$CODE" "403"
+
+# DNS rebinding：攻击者域名解析到 127.0.0.1 后即取得同源身份，CORS 从此完全不设防
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/cards" -H "Host: attacker.example:$PORT")
+chk "Host 不在白名单 → 403（挡 DNS rebinding）" "$CODE" "403"
+
+# 正常路径不能被误伤
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/cards" -H "Origin: http://127.0.0.1:$PORT")
+chk "同源 Origin（127.0.0.1）放行" "$CODE" "200"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/cards" \
+  -H "Origin: http://localhost:$PORT" -H "Host: localhost:$PORT")
+chk "同源 Origin（localhost 写法）放行" "$CODE" "200"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/cards")
+chk "不带 Origin 的请求（CLI/curl）放行" "$CODE" "200"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/")
+chk "GET / 取界面照常" "$CODE" "200"
+
 echo "── CLI ──"
 CLI="node $REPO/tools/kanban/cli.mjs"
 export KANBAN_CARDS_DIR="$CARDS" KANBAN_PORT=$PORT KANBAN_AGENT=test-agent

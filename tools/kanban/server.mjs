@@ -21,6 +21,39 @@ const HOST = "127.0.0.1";
 // server / cli / hook 必须读同一份，否则分发出去就各说各话。
 const PORT = store.PORT;
 
+/* ══ 来源校验 ══
+ * 绑在 127.0.0.1 上**不等于**外面打不进来：你开着看板时访问的任意网页，都能发一个
+ * enctype=text/plain 的跨站表单 POST（属 CORS simple request，浏览器不发预检），
+ * 往卡上塞一条 kind=decision / authorKind=human / author=<你的 git user.name> 的留言。
+ * 那条留言会被 hooks/inject-card-context.mjs 当成「生效中的人工决策（必须遵守）」
+ * 注入下一轮 agent context —— 一条从外网直通 agent 指令层的路径。
+ *
+ * 两道校验各挡一种：
+ *   Origin —— 挡跨站请求。浏览器对非 GET 一定会带，且伪造不了。
+ *   Host   —— 挡 DNS rebinding（攻击者域名解析到 127.0.0.1 后就取得同源身份，
+ *             CORS 从此完全不设防，PUT/DELETE 全开）。
+ *
+ * 127.0.0.1 与 localhost 两种写法都要放行：看板用哪个开都行，只认一个会把人锁在外面。
+ * 不带 Origin 的请求（CLI 的 fetch、curl、手工调试）照常放行——它们不是浏览器发起的
+ * 跨站请求，而 CLI 回退路径本来就直接读写文件，挡它没有意义。
+ */
+const ALLOWED_ORIGINS = new Set([`http://${HOST}:${PORT}`, `http://localhost:${PORT}`]);
+const ALLOWED_HOSTS = new Set([`${HOST}:${PORT}`, `localhost:${PORT}`]);
+
+/** 返回错误信息；null 表示放行。 */
+function checkOrigin(req) {
+  // Origin: null（沙箱 iframe、file://）不在白名单里，会被下面这条挡掉——这是对的。
+  const origin = req.headers.origin;
+  if (origin !== undefined && !ALLOWED_ORIGINS.has(origin)) {
+    return "跨站请求已拒绝（Origin: " + origin + "）";
+  }
+  const host = String(req.headers.host || "");
+  if (!ALLOWED_HOSTS.has(host)) {
+    return "Host 不合法（" + (host || "缺少 Host 头") + "）。请用 http://" + HOST + ":" + PORT + " 访问。";
+  }
+  return null;
+}
+
 const HERE = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
 const INDEX_HTML = path.join(HERE, "index.html");
 
@@ -324,6 +357,10 @@ function handleDelete(res, id) {
 const server = http.createServer(async (req, res) => {
   const pathname = (req.url || "/").split("?")[0];
   try {
+    // 必须在任何路由之前——包括 GET /，否则 rebinding 拿得到界面再由界面发同源请求。
+    const originErr = checkOrigin(req);
+    if (originErr) return sendJson(res, 403, { error: originErr });
+
     if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(fs.readFileSync(INDEX_HTML));
