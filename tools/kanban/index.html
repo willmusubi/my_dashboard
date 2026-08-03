@@ -252,7 +252,9 @@
   .comment-time { font-size: 11px; color: var(--ink-faint); font-weight: 400; margin-left: 6px; }
   .comment-text { font-size: 13px; color: var(--ink-dim); margin-top: 2px; line-height: 1.5; white-space: pre-wrap; }
   .no-comment { font-size: 13px; color: var(--ink-faint); margin-bottom: 10px; }
-  .pending-pill { background: var(--warn-soft); color: var(--warn); }
+  .pending-pill { background: var(--warn-soft); color: var(--warn); font-weight: 700; }
+  /* 等 AI 的那一侧淡化：信息保留，但不跟「需要你回复」抢注意力 */
+  .pending-ai { background: var(--muted-soft); color: var(--muted); }
 
   /* ── 留言：人和 AI 的身份要一眼分得出 ── */
   .cm-body { min-width: 0; flex: 1; }
@@ -265,7 +267,8 @@
   .cm-kind-question { background: var(--warn-soft); color: var(--warn); }
   .cm-kind-blocker { background: var(--crit-soft); color: var(--crit); }
   .cm-status { font-size: 10.5px; font-weight: 700; margin-left: 5px; color: var(--ink-faint); }
-  .cm-open { color: var(--warn); }
+  .cm-await-you { color: var(--warn); font-weight: 700; }
+  .cm-await-ai { color: var(--muted); font-weight: 600; }
   .cm-acked { color: var(--accent); }
   .cm-done { color: var(--good); }
   .cm-supersede { border: 1px solid var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: 6px; padding: 2px 8px; font-size: 11px; margin-top: 6px; }
@@ -594,9 +597,12 @@
     if (tk.agent) badges += '<span class="pill agent-pill">' + escapeHtml(tk.agent) + "</span>";
     if (tk.approvalRequired) badges += '<span class="pill approval-pill">需人工批准</span>';
     badges += dependsOnBadge(tk);
-    // 有人写的、agent 还没确认的项 —— 从看板一眼就能看出哪张卡在等 agent 回应
-    var pend = pendingHumanCount(tk);
-    if (pend) badges += '<span class="pill pending-pill">💬 ' + pend + " 待处理</span>";
+    // 两个方向都显示，但轻重不同。「需要你回复」排在前面且醒目——打开看板最先要
+    // 回答的问题就是「哪些在等我」。
+    var waitYou = pendingAgentCount(tk);
+    if (waitYou) badges += '<span class="pill pending-pill">🙋 ' + waitYou + " 需要你回复</span>";
+    var waitAi = pendingHumanCount(tk);
+    if (waitAi) badges += '<span class="pill pending-ai">💬 ' + waitAi + " 待 AI 读</span>";
     return (
       '<div class="ticket-card risk-stripe-' + tk.risk + '" data-id="' + escapeHtml(tk.id) + '" draggable="true" tabindex="0">' +
       '<div class="ticket-id mono">' + tk.id + "</div>" +
@@ -801,7 +807,21 @@
     decision: "决策", question: "提问", answer: "回答", note: "留言",
     blocker: "阻塞", progress: "进度", evidence: "证据"
   };
-  var STATUS_LABEL = { open: "待处理", acked: "已确认", done: "已完成", superseded: "已取代" };
+  /* open 的含义取决于**是谁写的**，不能一律译成「待处理」——那会把方向抹掉：
+     人写的 open  = 等 AI 确认（ack），不是等你；
+     agent 写的 open = 等你回复。
+     数据层本来就分得清（card-store.mjs 的 boardPending() 拆 waitingOnAgent /
+     waitingOnHuman），CLI 也照实说「N 项等你处理」，只有浏览器界面曾经压平。 */
+  var STATUS_LABEL = { acked: "已确认", done: "已完成", superseded: "已取代" };
+  function statusLabel(c) {
+    if (c.status !== "open") return STATUS_LABEL[c.status] || c.status;
+    return c.authorKind === "human" ? "已送出·待 AI 读" : "需要你回复";
+  }
+  /** 样式也分向：等你的醒目，等 AI 的淡化。 */
+  function statusClass(c) {
+    if (c.status !== "open") return "cm-" + c.status;
+    return c.authorKind === "human" ? "cm-await-ai" : "cm-await-you";
+  }
   var supersedingId = null;   // 正在取代哪条决策
 
   function fmtAt(iso) {
@@ -814,7 +834,7 @@
   function commentHtml(c) {
     var isAgent = c.authorKind === "agent";
     var initial = c.author ? c.author.charAt(0).toUpperCase() : "?";
-    var statusTxt = STATUS_LABEL[c.status] || c.status;
+    var statusTxt = statusLabel(c);
     // 「已确认 · 14:02」——把「AI 到底看没看见我的决定」从信仰变成可见状态
     if (c.status === "acked" || c.status === "done") statusTxt += " · " + fmtAt(c.statusAt);
     var canSupersede = c.kind === "decision" && (c.status === "open" || c.status === "acked");
@@ -823,17 +843,26 @@
       '<div class="cm-body">' +
       '<span class="comment-name">' + escapeHtml(c.author || "匿名") + "</span>" +
       '<span class="cm-kind cm-kind-' + c.kind + '">' + (KIND_LABEL[c.kind] || c.kind) + "</span>" +
-      '<span class="cm-status cm-' + c.status + '">' + escapeHtml(statusTxt) + "</span>" +
+      '<span class="cm-status ' + statusClass(c) + '">' + escapeHtml(statusTxt) + "</span>" +
       '<span class="comment-time">' + fmtAt(c.at) + "</span>" +
       '<div class="comment-text">' + escapeHtml(c.text) + "</div>" +
       (canSupersede ? '<button type="button" class="cm-supersede" data-supersede="' + c.id + '">取代这条决策</button>' : "") +
       "</div></div>";
   }
 
-  /** 有人写的、还没处理完的项 —— 与服务端 liveHumanItems 同一套判据 */
+  /* 两个方向分开数，判据与服务端 boardPending() 一致。
+     以前只数了人写的那一侧，于是「agent 提问等你回答」在卡面上完全不可见——
+     对一个给人看的看板来说，那恰恰是最该显示的方向。 */
+  /** 人写的、agent 还没确认的 —— 等 AI */
   function pendingHumanCount(tk) {
     return (tk.comments || []).filter(function (c) {
       return c.authorKind === "human" && c.status === "open";
+    }).length;
+  }
+  /** agent 写的、人还没回应的 —— 等你 */
+  function pendingAgentCount(tk) {
+    return (tk.comments || []).filter(function (c) {
+      return c.authorKind === "agent" && c.status === "open";
     }).length;
   }
 

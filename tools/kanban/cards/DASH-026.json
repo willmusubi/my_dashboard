@@ -1,0 +1,90 @@
+{
+  "id": "DASH-026",
+  "title": "留言状态与卡面徽章改成方向感知（分清「等 AI」和「等你」）",
+  "content": "## 目标\n看板界面把「等 AI 确认」和「等你回复」压成了同一个词，且只显示前者。数据层本来分得清（`card-store.mjs:702-714` 的 `boardPending()` 明确拆 `waitingOnAgent`/`waitingOnHuman`，CLI 也照实说「1 项等你处理」），只有浏览器界面压平了。\n\n## 现象\n- `index.html:804` `STATUS_LABEL` 把 `open` 一律译成「待处理」，丢掉主语。人写的 decision 处于 `open` 时，真实含义是「等 AI 确认（ack）」，不是「等你处理」。\n- `index.html:834-836` `pendingHumanCount()` 只数 `authorKind === 'human' && status === 'open'`。**agent 提问等人回答时，卡面零徽章**——最需要人注意的方向反而不可见。\n\n## 范围\n- `tools/kanban/index.html`：留言状态标签依 `authorKind` 分向；卡面徽章拆成两个方向分别计数。\n- `tools/kanban/test.sh` 或 `test-store.mjs`：如有可测的纯函数则补测。\n\n## 非目标\n- 不新增「等我复核」这个状态（那是产品判断，另案）。\n- 不改 `card-store.mjs` 的 schema 与 `COMMENT_STATUSES`。\n- 不改 CLI 与 hook 的措辞（它们已经是对的）。\n\n## 情境包\n- 相关文件：`tools/kanban/index.html`（`STATUS_LABEL` 804、`commentHtml` 815-832、`pendingHumanCount` 834-837、`cardHtml` 591-608）。\n- design system：复用既有 `.pill` 与 `.pending-pill` 样式，新方向的徽章照既有 pill 风格做，不硬写一次性色值。\n- 不得触碰：`card-store.mjs`、`server.mjs`、`cli.mjs`、`hooks/`。\n\n## 验收标准\n- 人写的 `open` 项：标签显示「等 AI」语义，卡面徽章计入「等 AI」那一类。\n- agent 写的 `open` 项：标签显示「等你」语义，卡面出现对应徽章（修复前完全没有）。\n- `acked` / `done` / `superseded` 三种显示不变。\n- 具体措辞由人选定（ui 关卡）。\n\n## 验证契约\n- 回归：`npm test`\n- 截图：MT-013（人写 decision 处于 open）与一张 agent 提问处于 open 的卡各一张",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": true,
+  "createdAt": "2026-08-03",
+  "updatedAt": "2026-08-03T15:35:24+07:00",
+  "rev": 7,
+  "epic": "人机决策通道",
+  "userStory": "留言结构化",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": true,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "从 index.html 原样抽出 statusLabel / statusClass / pendingHumanCount / pendingAgentCount / commentHtml / cardHtml 实跑验证（不重写，否则验的不是真代码）：",
+      "  人写 decision(open)  → 文案「已送出·待 AI 读」 class=cm-await-ai",
+      "  agent 写 question(open) → 文案「需要你回复」   class=cm-await-you",
+      "  人写 decision(acked) → 文案「已确认」          class=cm-acked（未受影响）",
+      "  卡面·只有人写的 open   → 💬 1 待 AI 读 [pending-ai]",
+      "  卡面·只有 agent 的 open → 🙋 1 需要你回复 [pending-pill]（修复前此情况完全没有徽章）",
+      "  卡面·两种都有         → 🙋 1 需要你回复 ｜ 💬 1 待 AI 读（等你的排在前面）",
+      "npm test（三个项目）→ 单元 93/0；集成 55/0（DASH）、48/0（MT）、48/0（TKT）",
+      "三个看板重启后 界面 200 / 跨站 403"
+    ],
+    "findings": [
+      "UI 关卡：出了 3 个措辞变体（分轻重 / 明示对象 / 极简）交人选定，用户选「分轻重」。选择与理由已记在卡片留言里。",
+      "复用既有 design token：醒目侧用 --warn / --warn-soft（与 pending-pill 原有配色一致），淡化侧用 --muted / --muted-soft（与 risk-low 同一套）。没有新增一次性色值，深色模式自动跟随（两组 token 在 prefers-color-scheme: dark 下都有对应值）。",
+      "原本 `'cm-' + c.status` 这种「按字段拼 class」的写法是方向被抹掉的根因——status 单独一个字段不足以决定语义，必须结合 authorKind。改成 statusClass(c) 函数后语义集中在一处。",
+      "pendingAgentCount 是新增的。原来只有 pendingHumanCount，且代码注释明写目的是「看出哪张卡在等 agent 回应」——方向从一开始就是单向的，不是漏写。"
+    ],
+    "residual": "① 未取得 UI 截图：本机 Chrome 扩展未连接（tabs_context_mcp 返回 extension not connected），改用「抽出真实函数实跑并断言输出」作为替代证据。要跟：下次能连上浏览器时补两张截图到 ai/artifacts/看板可用性/verification/DASH-026/，或你自己打开看板扫一眼即可关掉这条。你现在的 MT 看板上 MT-005 与 MT-013 各有一条人写的 open 决策，会显示灰色的「💬 1 待 AI 读」；橙色的「🙋 需要你回复」要等下次有 agent 提问才会自然出现。② 本卡的变化没有自动化测试覆盖——纯前端渲染，既有测试体系（card-store 单元 + HTTP 集成）都不加载 index.html。不用跟：验证方式已用「抽真实函数实跑」补上，且这几个函数是纯函数、无状态；若将来 index.html 的逻辑继续增厚，再评估引入 DOM 测试。③ 「等我复核」这个状态仍不存在（你在 MT-013 写的「我想看到成品页面再回来做决定」属于这一类，系统只会当成「等 AI 确认」，agent 一 ack 提醒就消失）——要跟：这是产品判断，需要你决定要不要加，建议单独开卡讨论。"
+  },
+  "comments": [
+    {
+      "id": "c-20260803T152848-df75",
+      "at": "2026-08-03T15:28:48+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-03T15:28:48+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "UI 关卡：已出 3 个措辞变体（分轻重 / 明示对象 / 极简），用户选定「分轻重」——两个方向都显示，但「需要你回复」用醒目色、「待 AI 读」淡化。理由：看板是给人看的，需要人动手的一侧应当跳出来，同时保留「AI 到底读没读到我的决定」这个信息。授权留痕：ui 关卡为人工选定，非 agent 代勾。"
+    },
+    {
+      "id": "c-20260803T153524-01ba",
+      "at": "2026-08-03T15:35:24+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-03T15:35:24+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "关卡勾选留痕：test / code_review 属 agent 职责自行勾；product 依用户「开卡并且开始修复」的授权代勾；**ui 关卡是人工选定的**（3 个变体中选「分轻重」），非代勾。"
+    }
+  ]
+}
