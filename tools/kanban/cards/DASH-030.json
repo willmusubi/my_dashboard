@@ -1,0 +1,105 @@
+{
+  "id": "DASH-030",
+  "title": "装完自动跑自检：收尾待办从 6 步降到 3 步",
+  "content": "## 目标\n安装脚本把能自动跑的收尾步骤自己跑掉，让「装完还要手动做 6 件事」降到 3 件。\n\n## 背景\nDASH-029 之后装新项目已经是一条命令，但脚本收尾仍打印 6 步待办。用户用它实际装了\nreal_rpg（RR / 4432）之后问「这些不能自动执行吗」。逐条看：\n\n| 步骤 | 结论 |\n|---|---|\n| 1. 确认 config.json 的 idPrefix / port | **多余**——前缀在安装时已停下来让人按回车确认过，这是旧流程遗留 |\n| 2. `bash scripts/check-governance.sh` | **能自动**：秒级、只读 |\n| 3. `bash tools/kanban/test.sh` | **能自动**：跑在临时目录不碰真实卡片；但要十几秒 |\n| 4. `npm run kanban` | **不能**：长驻前台进程，自动跑会挂住安装脚本或留下孤儿进程 |\n| 5. 开新的 Claude Code 会话 | 不能：shell 脚本无法代劳 |\n| 6. 跑 project-kickoff | 不能：它本来就要和人对话 |\n\n## 范围\n- `scripts/install-into-project.sh` 收尾段：\n  - 删掉「确认 config.json」那条待办，改成陈述本次写入的值\n  - **实际安装**（非 dry-run）**且是全新安装**（config.json 由本次写入）时，自动依次跑\n    `scripts/check-governance.sh` 与 `tools/kanban/test.sh`，逐条报结果\n  - config.json 已存在时（重装 / upgrade-all）跳过自检并说明原因\n  - 新增 `--no-verify` 关掉自检\n  - 自检失败要响亮：打印失败输出，并以非 0 退出，同时讲清「文件已装好，是自检没过」\n- `tools/kanban/test.sh`：补对应断言\n\n## 非目标\n- **不自动跑 `npm run kanban`**——长驻进程，安装脚本不该留下它。\n- 不自动 `git init`、不自动 commit、不自动建第一张卡。\n- 不自动开 Claude 会话、不自动跑 project-kickoff。\n- 不改 DASH-029 定下的前缀推导 / 端口选取 / package.json 行为。\n- 不在 upgrade-all 的路径上加自检——批量升级每个项目多花十几秒，而 kit 本身刚在\n  分发源跑过完整测试，重复跑没有新信息。\n\n## 情境包\n- `scripts/install-into-project.sh`：收尾段在「已登记到 distributions.json」之后；\n  `CFG_EXISTS` 已在 DASH-029 中引入，可直接用来区分全新安装与重装。\n- `scripts/check-governance.sh`、`tools/kanban/test.sh` 都是 kit-owned，本次安装\n  刚刷新过，跑的是已知版本，不是目标项目的任意代码。\n- test.sh 自己会绑 4531 端口（`KANBAN_TEST_PORT` 可改），与 44xx 分发号段不冲突。\n- 不得触碰：`tools/kanban/` 下的 server / card-store / cli / hooks。\n\n## 验收标准\n- 全新安装（非 dry-run、非 --no-verify）后自动跑完两项自检，逐条报结果。\n- `--dry-run` 不跑自检。\n- config.json 已存在时（重装 / upgrade-all）不跑自检，并说明为什么跳过。\n- `--no-verify` 能关掉自检。\n- 自检失败时输出显眼、退出码非 0，且明确区分「文件已装好」与「自检没过」。\n- 收尾待办从 6 条降到 3 条，且不再包含「确认 config.json」。\n- `bash scripts/upgrade-all.sh --dry-run` 行为不变：无自检、无交互阻塞。\n\n## 验证契约\n- `npm test`\n- 临时目录全新安装实跑一次，确认自检自动跑且结果正确\n- 制造一次自检失败，确认响亮且退出码非 0\n- `bash scripts/upgrade-all.sh --dry-run` 前后对照\n- `bash scripts/check-governance.sh`",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-08-07",
+  "updatedAt": "2026-08-07T23:39:37+07:00",
+  "rev": 7,
+  "epic": "分发能力",
+  "userStory": "安全分发",
+  "track": "backend",
+  "dependsOn": [
+    "DASH-029"
+  ],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "npm test → card-store 单元 93/0；HTTP 集成 73/0（分发脚本段 18→24 条，另加 1 条 shell 静态检查）",
+      "bash scripts/check-governance.sh → governance kit check passed",
+      "bash scripts/upgrade-all.sh --dry-run </dev/null → 成功 3，跳过 0，失败 0；三个目标输出里都没有「自检」段（全都有 config.json，走跳过分支），无交互阻塞",
+      "全新安装实跑 → 自动跑出「✅ scripts/check-governance.sh / governance kit check passed」与「✅ tools/kanban/test.sh / 通过 93,0 + 通过 48,0」，退出码 0",
+      "失败路径实跑（目标预置 ai/context/ 使 design-system.md 缺失）→「❌ scripts/check-governance.sh（退出码 1）」+「文件已经装好了…但自检没过」，退出码 1",
+      "--no-verify / 重装（config.json 已存在）/ --dry-run 三条跳过路径各自实跑确认",
+      "跑完 distributions.json 只剩 MT / RR / TKT，无测试残留"
+    ],
+    "findings": [
+      "**6 步待办里只有 2 步该自动化。** 第 1 步（确认 config.json）在 DASH-029 之后已经多余——前缀在安装时就停下来确认过了；第 4 步 npm run kanban 是长驻前台进程，自动跑要么挂住安装脚本、要么留下一个人不知道的孤儿进程；第 5、6 步（新 Claude 会话、project-kickoff）shell 脚本无法代劳。净效果 6 → 3。",
+      "**自动自检会在测试内部递归跑 test.sh，而它默认绑 4531——和外层测试的 server 同一个端口。** 嵌套那套断言会连上外层 server 并打在它身上，正是 test.sh:16 注释警告的事故。已给既有两处安装调用加 --no-verify，给专门测自检的两个用例传不同的 KANBAN_TEST_PORT。",
+      "**$TMPDIR 带尾斜杠 → TMPROOT 出现双斜杠 → 按路径清理 distributions.json 全程是空操作。** 安装脚本对目标做 `cd && pwd`（单斜杠）后登记，两边字符串对不上。后果不是当次失败，而是**下一次**跑测试时残留前缀撞车，且现场看不出是上次留下的（实际发生了）。已在 TMPROOT 定义处归一化，并把清理从「逐个记帐」改成 trap 里按 TMPROOT 前缀整批扫——逐个记帐要求每条路径都被记得，而失败路径恰恰最容易漏。",
+      "**`installer | grep -q` 在 pipefail 下必然误报。** grep -q 一匹配就退出并关闭管道，安装脚本收到 SIGPIPE 死掉（141），pipefail 把整条管道判为失败，断言明明该过却报红。改成先捕获到变量再匹配。",
+      "**同一个 bug 类一天咬了三次**（install-into-project.sh 两次、upgrade-all.sh 一次）：bash 把全角字符当成变量名的一部分，`$label` 后紧跟「（」会被解析成变量 `label（`，set -u 下直接崩。三处全在**错误路径**上——平时跑不到，一跑到就崩在最不该崩的地方。已全部改成 ${VAR}，并加了一条静态断言扫描所有 shell 脚本，不再靠记性。",
+      "**范围扩了一个文件并在此说明**：卡片范围写的是 install-into-project.sh 与 test.sh，但上面那条扫描同时命中了 scripts/upgrade-all.sh:24（`（$REG）`）。留着就是留一个已知会崩的错误路径，且新加的扫描断言会一直报红，故一并修掉（单字符改动，无行为变化）。",
+      "自检失败时的措辞刻意把「文件已装好」和「自检没过」分开：不分开的话人会以为安装失败跑去重装，而重装因为 config.json 已存在反倒跳过自检，问题就此隐形。"
+    ],
+    "residual": "① 自检只在全新安装时跑，重装 / upgrade-all 跳过。**不用跟**：kit 在分发源每次都跑完整测试，各项目重复跑没有新信息，只会让批量升级变慢。重新评估的触发条件：出现一次「分发源测试全绿但目标项目装完是坏的」，就把自检改成 upgrade 也跑。\n\n② 全新安装因为要跑嵌套的 test.sh，比之前慢十几秒。**不用跟**：这是一次性成本，且 --no-verify 可以关掉。\n\n③ 嵌套 test.sh 的端口靠 KANBAN_TEST_PORT 隔离，测试里用 PORT+1 / PORT+2 写死。若将来同一套测试并发跑两份，仍可能撞。**不用跟**：本项目的测试不并发跑；真要并发，改成从环境变量取随机基址即可。\n\n④ 自检跑的是**目标项目里**的 check-governance.sh 与 test.sh，不是分发源的。**不用跟**：这两个文件都是 kit-owned，本次安装刚刷新过，跑的就是分发源的版本；而且这正是想要的语义——验的是「装完之后目标项目是好的」。\n\n⑤ 新增的 shell 静态扫描只覆盖 scripts/*.sh 与 tools/kanban/*.sh，不覆盖 .mjs 里的模板字符串。**不用跟**：这个 bug 是 bash 变量展开特有的，JS 没有这个问题。\n\n⑥ 「装完只剩 3 步」里的第 2、3 步（开新会话、跑 project-kickoff）永远需要人。**不用跟**：这是设计意图不是缺口——hook 要新会话才生效是 Claude Code 的机制，而 project-kickoff 本来就要和人对话。"
+  },
+  "comments": [
+    {
+      "id": "c-20260807T210524-8fe8",
+      "at": "2026-08-07T21:05:24+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-07T21:05:24+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户本轮问「这些不能自动执行吗？」，明确指向安装脚本收尾打印的那 6 步待办。据此勾 gates.product 与 readiness.human_approval_recorded，授权范围仅限本卡。\n\n范围内已替用户做的判断（若不同意请在卡上留言推翻）：第 4 步 npm run kanban 不自动跑——它是长驻前台进程；第 2、3 步自检只在全新安装时跑，upgrade-all 走的重装路径跳过，否则批量升级每个项目白花十几秒。\n\n本卡 risk=medium：不新增写入面，只是执行本次刚刷新过的两个 kit 自有脚本；architecture / security 非必需关卡。"
+    },
+    {
+      "id": "c-20260807T211706-2256",
+      "at": "2026-08-07T21:17:06+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-07T21:17:06+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "范围变更说明：新增的 shell 静态扫描断言同时命中了 scripts/upgrade-all.sh:24（`（$REG）`）——不在本卡范围内，但留着就是留一个已知会崩的错误路径，而且那条断言会一直报红。已一并修掉（单字符，加花括号，无行为变化）。若你认为不该动它，说一声我改回去并把扫描范围缩到两个文件。\n\n关卡勾选留痕：test 与 code_review 自行勾。本卡 risk=medium，architecture / security 非必需关卡（不新增写入面，只是执行本次刚刷新过的两个 kit 自有脚本）。product 已在开卡时依用户「这些不能自动执行吗」的授权勾过。\n\n按 ai/process/kanban.md，medium + backend 的必需关卡是 product / test / code_review 三项，现已齐。等你验收后推 done。"
+    },
+    {
+      "id": "c-20260807T233936-f671",
+      "at": "2026-08-07T23:39:36+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-07T23:39:36+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收：用户本轮明确「我验证完了」。medium+backend 的必需关卡 product / test / code_review 已齐，证据在 evidence。据此推 done。"
+    }
+  ]
+}

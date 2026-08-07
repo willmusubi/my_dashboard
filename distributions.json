@@ -8,6 +8,13 @@
       "lastUpgradedAt": "2026-08-03"
     },
     {
+      "path": "/Users/liutong/Admin/Journey_to_AI/real_rpg",
+      "prefix": "RR",
+      "port": 4432,
+      "installedAt": "2026-08-07",
+      "lastUpgradedAt": "2026-08-07"
+    },
+    {
       "path": "/Users/liutong/Admin/Journey_to_AI/three_kingdoms_traveler",
       "prefix": "TKT",
       "port": 4420,

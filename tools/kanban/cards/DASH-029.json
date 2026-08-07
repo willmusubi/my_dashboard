@@ -1,0 +1,106 @@
+{
+  "id": "DASH-029",
+  "title": "新项目一条命令装上治理套件：govkit + 前缀/端口自动推导",
+  "content": "## 目标\n在新建的项目里一条命令装上治理套件并可直接开工：`cd 新项目 && govkit`。\n\n## 背景\n现在装一个新项目要人工填三样：想一个前缀、查一个空闲端口、手改 package.json，\n再加上敲一长串绝对路径。`scripts/install-into-project.sh` 本来就支持 `.` 作目标，\n所以「一条命令」缺的不是入口，是这三个必须人工判断的参数。\n\n前缀有既成惯例可循：已装的 three_kingdoms_traveler → TKT、medical_tourism → MT，\n都是下划线分词取首字母。\n\n## 人工决策（2026-08-07 本轮对话，用户三选一确认）\n1. **前缀**：从目录名推导，但**打印出来停下等人按回车确认**。\n   理由：前缀不可逆——建第一张卡之后再改会让整块看板失效（install-into-project.sh:181）。\n   不可逆的值不该由脚本自行拍板，这和本项目「模糊就停下来问人」的立场一致。\n2. **package.json**：脚本自动补；目标已有 `test` 脚本时挂到 `kanban:test`，绝不覆盖\n   （TKT 的 `test` 是 `vitest run`，覆盖掉就毁了它真正的测试命令）。\n3. **入口**：`~/.zshrc` 加 `govkit` 函数。\n\n## 范围\n- `scripts/install-into-project.sh`\n  - TARGET 缺省为 $PWD\n  - `--prefix` 缺省时从目录名推导 + 停下确认；撞已有前缀则报错退出\n  - `--port` 缺省时读 distributions.json 选下一个空位，并查实际占用\n  - 新增 package.json 补丁步骤（改动前备份进同一个 .kanban-backup-<戳>/）\n  - 新增 `--yes` 用于非交互场景\n- `tools/kanban/test.sh`：扩充 249-310 已有的安装器集成用例\n- `README.md`：「分发到其他项目」一节\n- `~/.zshrc`（**仓库外的全局配置**）：加 govkit 函数\n\n## 非目标\n- 不改 `upgrade-all.sh` 的行为——它的目标都已有 config.json，走「保留目标版本」分支，\n  既不触发推导也不该弹确认（否则批量升级会被交互卡住）。\n- 不做卸载命令、不自动 `git init`、不自动建第一张卡。\n- 不做全局 Claude skill 入口：hook 要新会话才生效，在目标项目的 Claude 会话里装完，\n  那个会话的 hook 是死的，还得退出重开。shell 入口没这个问题。\n- 不改 kit 文件的 refresh / keep 归属划分。\n\n## 情境包\n- `scripts/install-into-project.sh`：安全阀 34-43；refresh/keep 归属 133-151；\n  config.json 写入 165-188；收尾提示 228-262（已有 EXIST_TEST 探测逻辑可直接复用）。\n- `distributions.json`：已占 4420（TKT）、4431（MT）；源仓库自己 4430。\n- `tools/kanban/test.sh:249-310`：已有安装器集成用例，含 distributions.json 的清理逻辑。\n- 不得触碰：`tools/kanban/` 下的 server / card-store / cli / hooks。\n\n## 验收标准\n- 空目录里 `govkit --dry-run` 能推导出前缀、选出空闲端口、报告将对 package.json 做的改动，\n  且不写任何东西。\n- 目录名 medical_tourism / three_kingdoms_traveler 分别推出 MT / TKT。\n- 推导结果与 distributions.json 已有前缀（或源仓库的 DASH）撞车时**报错退出**，不静默改名。\n- 目标已有 `test` 脚本时补出来的是 `kanban:test`，原 `test` 一字未动。\n- 目标没有 package.json 时跳过并提示，不凭空创建。\n- `bash scripts/upgrade-all.sh --dry-run` 行为与本卡之前一致：无新增提示、无交互阻塞。\n\n## 验证契约\n- `npm test`\n- 临时目录 dry-run 与实跑各一遍，diff 出实际改了什么\n- `bash scripts/upgrade-all.sh --dry-run` 前后对照\n- `bash scripts/check-governance.sh`",
+  "stage": "done",
+  "risk": "high",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-08-07",
+  "updatedAt": "2026-08-07T21:04:05+07:00",
+  "rev": 9,
+  "epic": "分发能力",
+  "userStory": "安全分发",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": true,
+    "security": true,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "bash -n scripts/install-into-project.sh → 语法 OK",
+      "npm test → card-store 单元 93/0；HTTP 集成 66/0（分发脚本段从 5 条断言增至 18 条）",
+      "bash scripts/check-governance.sh → governance kit check passed",
+      "bash scripts/upgrade-all.sh --dry-run </dev/null → 成功 2，跳过 0，失败 0；medical_tourism 与 three_kingdoms_traveler 均走「目标已有 config.json，沿用」分支，无交互阻塞，TKT 的 9 个自有文件报「保留项目自有」",
+      "手工矩阵：目录名推导（three_kingdoms_traveler→TKT、medical_tourism→MT、my_dashboard→MD、myDashboard→MD、my-app→MA、foo→FOO、2048→空、中文→空）",
+      "手工矩阵：推导撞车硬停（rc=1）／显式 --prefix 撞车只警告／无 tty 未加 --yes 拒绝执行（rc=1）／交互三路径（回车接受、输入覆盖并转大写、输入已占用被拒）",
+      "手工矩阵：路径含单引号（it's_a_proj → ISAP）正常；畸形 package.json 三种（scripts 非 object／非法 JSON／顶层是数组）均报告后跳过，无 traceback、无写入",
+      "手工矩阵：同一目标重跑 → 汇总「新建 0，覆盖 0，相同 57」，package.json 报「无需改动」，无多余备份目录",
+      "zsh -c 'source ~/.zshrc; cd <新目录> && govkit --dry-run' → 端到端可用；在源仓库内跑 govkit 被安全阀拦下（「拒绝：目标就是本仓库自己」，rc=1）"
+    ],
+    "findings": [
+      "**read 的返回码必须查。** 初版写成 `read -r ANS < /dev/tty || ANS=\"\"`，非交互环境下 read 立刻失败、ANS 为空，代码把它当成「人按了回车」——等于静默替人接受了一个不可逆的前缀，正是这次确认要防的事。已改为查返回码并拒绝执行，并加了回归断言「非交互环境不静默接受推导出的前缀」。",
+      "`$CUR_PREFIX」` 这类写法在 set -u 下报 unbound variable：bash 把全角字符当成变量名的一部分。脚本里本来就有注释警告过这个坑，新写的 4 处仍全部踩中，已统一改成 `${CUR_PREFIX}`。",
+      "把路径插进 `python3 -c \"...\"` 源码字符串的写法（沿用自旧版 EXIST_TEST）在目录名含单引号时会破。新增与沿用的 3 处已全部改走 argv。",
+      "package.json 的备份改成「确定要写的那一刻才做」。无条件先备份的话，upgrade-all 每跑一次就在每个项目留下一个只装着未改动文件的备份目录。",
+      "前缀/端口解析移到拷贝**之前**。确认提示若出现在 63 个文件拷完之后，人一旦 Ctrl-C 就留下一个装了一半的项目——而本脚本没有卸载命令。",
+      "撞车处理按来源分开：推导值撞车**硬停**（脚本不能替人做不可逆决定），显式 --prefix 撞车**只警告**（人已经决定过了）。后者也是既有两条测试依赖的行为。",
+      "推导规则与既有惯例吻合：three_kingdoms_traveler → TKT、medical_tourism → MT，和两个已装项目实际在用的前缀完全一致——不是新造的约定。",
+      "撞车检测的基准里包含分发源自己的 idPrefix（DASH），不只是 distributions.json 的登记，所以测试用 d_a_s_h→DASH 做断言在任何机器上都成立。"
+    ],
+    "residual": "**agent 侧审查结论（高风险，架构+安全待人拍板）**：新增两个写入面——目标项目的 package.json（只加不改、改前备份、逐行报告、畸形输入一律跳过），以及仓库外的 ~/.zshrc（只加一个函数，不 source 任何外部内容）。既有安全阀（拒绝 \\$HOME／拒绝 /／拒绝本仓库自己／拒绝 .claude 是符号链接／kit 文件是符号链接时不写穿）全部未动，回归测试仍覆盖。方向是把三个原本静默取默认值（DASH/4430/不改 package.json）的地方改成「推导 + 出声 + 撞车就停」，是收紧不是放松。**批准建议：批准。** 但和 DASH-022/023/024 一样，仍是我审我自己写的代码。\n\n① 目标省略 = \\$PWD 是行为变更：旧版无参数会打印用法并退出 1。`--yes` + 省略目标 + 在陌生目录下跑，会无提示地装进当前目录。**不用跟**：默认路径（不带 --yes）一定停下来确认并显示完整目标路径，而 --yes 是显式的「我知道我在做什么」。重新评估的触发条件：真的误装过一次，就给 --yes 加上「目标必须显式指定」的约束。\n\n② package.json 会被 json.dumps 整体重排，缩进沿用原文件探测到的值（探测不到时用 2 空格），所以压缩成一行的 package.json 会被展开成多行。**不用跟**：改动前备份进 .kanban-backup-<戳>/，且逐行报告了动过哪些 key；npm 自己写 package.json 也是 2 空格。\n\n③ 端口是「选取那一刻空闲」，到人实际 `npm run kanban` 之间可能被别的进程抢走（TOCTOU）。**不用跟**：server 绑不上会直接退出并报错，不会静默错乱；且端口可逆，改 config.json 即可。\n\n④ 非拉丁目录名（中文等）推不出前缀，脚本报错要求显式 --prefix。**不用跟**：这是设计取舍——与其硬造一个没有含义的前缀，不如让人自己取。\n\n⑤ 交互确认的 3 条断言依赖本机有 expect，没有时打印「⏭ 跳过」而非失败。**不用跟**：跳过是显式打印的，不会伪装成通过（这条沿用本文件既有的「假通过比失败更糟」原则）；expect 在 macOS 上随系统自带。\n\n⑥ upgrade-all 遇到「已登记但 config.json 被删」的目标，现在会失败退出（旧版静默写 DASH/4430）。**不用跟**：失败计入 FAIL 并继续下一个项目，且响亮失败优于静默写错一个不可逆的前缀。\n\n⑦ ~/.zshrc 的 govkit 函数不在本仓库版本控制内，换机器要重新加一次（README 已写明它只是入口、正本是脚本本身）。**不用跟**：这是 dotfiles 的固有属性，不装函数直接跑脚本效果完全一样。"
+  },
+  "comments": [
+    {
+      "id": "c-20260807T182756-df72",
+      "at": "2026-08-07T18:27:56+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-07T18:27:56+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户本轮先问「有没有办法在创建新项目后，直接在新项目一个指令就可以装到新项目里直接使用」，我答复「三个决策点，定了我就开卡实作」，随后用户对三个问题全部作答（前缀=推导+停下确认、package.json=自动补且已有 test 则挂 kanban:test、入口=~/.zshrc 加 govkit 函数）。据此勾 gates.product 与 readiness.human_approval_recorded。授权范围仅限本卡。\n\n本卡 risk=high（新增两个写入面：目标项目的 package.json、以及仓库外的 ~/.zshrc），architecture 与 security 属 agent 先出结论、人再拍板——我不自己勾，做完会把结论写进 evidence 并停下来等人。"
+    },
+    {
+      "id": "c-20260807T184311-95d0",
+      "at": "2026-08-07T18:43:11+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-07T18:43:11+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "关卡勾选留痕：test 与 code_review 自行勾（本卡为脚本+测试变更，验证证据已写进 evidence.commands）。\n\narchitecture 与 security **不勾**——本卡 risk=high，这两关属「agent 先出结论、人再拍板」。agent 侧结论已写进 evidence.residual 第一段，批准建议为「批准」。请你读过之后决定采纳或打回，勾了再推 done。"
+    },
+    {
+      "id": "c-20260807T210405-0371",
+      "at": "2026-08-07T21:04:05+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-07T21:04:05+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收：用户勾选 architecture 与 security（rev 7），两关的 agent 侧结论早已写在 evidence.residual 第一段。另：用户已用本卡产出的 govkit 实际装了一个新项目——/Users/liutong/Admin/Journey_to_AI/real_rpg，前缀 RR、端口 4432，已登记进 distributions.json。据此推 done。"
+    }
+  ]
+}

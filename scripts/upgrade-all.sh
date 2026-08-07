@@ -21,7 +21,7 @@ case "${1:-}" in
 esac
 
 if [[ ! -f "$REG" ]]; then
-  echo "还没有分发记录（$REG）。"
+  echo "还没有分发记录（${REG}）。"
   echo "先用 scripts/install-into-project.sh 装一个项目，它会自动登记。"
   exit 0
 fi

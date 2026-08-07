@@ -57,11 +57,43 @@ hook 只保证「送达」，不保证「遵守」。遵守靠它必须 `ack` �
 
 ## 分发到其他项目
 
+新项目里一条命令：
+
 ```bash
-scripts/install-into-project.sh --dry-run --prefix TKT --port 4431 /path/to/project
+cd /path/to/新项目
+govkit --dry-run     # 先预演
+govkit               # 实际装
 ```
 
-先用 `--dry-run` 预演。kit 文件每次刷新（覆盖前备份到 `.kanban-backup-<时间戳>/`），
+`govkit` 是 `~/.zshrc` 里的一个函数，转发给下面这个脚本。没装函数就直接跑，效果一样：
+
+```bash
+scripts/install-into-project.sh [--dry-run] [--yes] [--no-verify] [--prefix TKT] [--port 4431] [/path/to/project]
+```
+
+**目标省略时用当前目录**，前缀和端口也都可以不传：
+
+- **前缀**从目录名推首字母缩写（`medical_tourism` → `MT`、`three_kingdoms_traveler` → `TKT`），
+  然后**停下来等你按回车确认**——回车接受，或直接输入别的。前缀建第一张卡之后就改不动了，
+  这种不可逆的值不该由脚本自行拍板。推出来的前缀撞上已有项目就报错退出，不会静默换一个；
+  没有终端可读时也拒绝执行，加 `--yes` 才算你认可推导值。
+- **端口**从 `distributions.json` 挑下一个既没登记过、也没被实际监听的号。
+- **`package.json`** 自动补 `kanban` 启动脚本；目标已有 `test` 脚本时看板测试挂到
+  `kanban:test`，**绝不覆盖**（TKT 的 `test` 是 `vitest run`，覆盖掉就毁了它真正的测试命令）。
+  没有 `package.json` 就跳过，不凭空创建。
+
+**装完自动跑自检**（`check-governance.sh` 与看板测试，逐条报结果）。只在全新安装时跑：
+重装和 `upgrade-all.sh` 会跳过，否则批量升级白等；`--no-verify` 可以关掉。自检没过时
+脚本响亮报错并以非 0 退出，且会讲清「文件已经装好了，是自检没过」——这两件事必须分开，
+否则人会跑去重装，而重装因为 `config.json` 已存在反倒会跳过自检，问题就此隐形。
+
+于是装完只剩 3 件事要你做，都是脚本代劳不了的：
+
+1. `npm run kanban` —— 长驻进程，不替你起（起了你也不知道它在跑）
+2. 开一个**新的** Claude Code 会话，hook 才生效
+3. 在那个会话里跑 `project-kickoff`，把想法拆成 Epic → Story → Task 建进看板
+
+kit 文件每次刷新（覆盖前备份到 `.kanban-backup-<时间戳>/`），
 而 `CLAUDE.md`、`ai/context/`、`ai/artifacts/`、`epics.json`、`cards/` 属于目标项目，
 **存在就永不碰**。会拒绝 `$HOME`、拒绝本仓库自己、拒绝目标 `.claude` 是符号链接
 （`cp -R` 会跟随它写进全局 `~/.claude`）。

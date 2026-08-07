@@ -7,7 +7,10 @@
 # 上一版直接 rm 真实 cards/，真删掉过 12 张卡——那种测试比没有测试更糟。
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/kanban-test.XXXXXX")"
+# cd && pwd 归一化：$TMPDIR 在 macOS 上带尾斜杠，mktemp 模板会产出 `…/T//kanban-test.X`。
+# 安装脚本对目标做的正是 cd && pwd（单斜杠），两边字符串对不上，按路径清理登记就成了空操作
+# ——残留的前缀会让**下一次**跑测试撞车失败，而现场完全看不出是上一次留下的。
+TMPROOT="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/kanban-test.XXXXXX")" && pwd)"
 CARDS="$TMPROOT/cards"
 mkdir -p "$CARDS"
 # 4531 而不是 44xx：44xx 是分发给各项目看板用的号段。测试端口若和某个项目的看板
@@ -22,7 +25,7 @@ PASS=0; FAIL=0
 
 # 安全阀：万一 mktemp 出意外指到仓库里，立刻停，不要往下删任何东西。
 case "$CARDS" in
-  "$REPO"/*) echo "拒绝运行：测试数据目录落在仓库内（$CARDS）"; exit 1 ;;
+  "$REPO"/*) echo "拒绝运行：测试数据目录落在仓库内（${CARDS}）"; exit 1 ;;
 esac
 
 ok(){ echo "  ✅ $1"; PASS=$((PASS+1)); }
@@ -39,9 +42,30 @@ fi
 echo
 echo "══ HTTP 集成测试 ══"
 
+# 测试里的真实安装会往 distributions.json 登记。**跑挂了也必须清掉**，否则残留的
+# 前缀会让下一次跑测试撞车。所以按「路径在 TMPROOT 底下」整批扫，而不是逐个记帐——
+# 逐个记帐要求每条路径都被记得，而失败路径恰恰是最容易漏的。
+purge_registry() {
+  python3 - "$REPO/distributions.json" "$TMPROOT" <<'PY' 2>/dev/null || true
+import json, sys
+reg, root = sys.argv[1], sys.argv[2].rstrip("/") + "/"
+try:
+    d = json.load(open(reg))
+except Exception:
+    raise SystemExit
+rows = d.get("distributions", [])
+kept = [r for r in rows if not str(r.get("path", "")).startswith(root)]
+if len(kept) == len(rows):
+    raise SystemExit
+d["distributions"] = kept
+with open(reg, "w") as f:
+    json.dump(d, f, ensure_ascii=False, indent=2); f.write("\n")
+PY
+}
+
 KANBAN_PORT=$PORT KANBAN_CARDS_DIR="$CARDS" node "$REPO/tools/kanban/server.mjs" >/tmp/t1.log 2>&1 &
 SRV=$!
-trap 'kill $SRV 2>/dev/null; wait $SRV 2>/dev/null; rm -rf "$TMPROOT"' EXIT
+trap 'kill $SRV 2>/dev/null; wait $SRV 2>/dev/null; purge_registry; rm -rf "$TMPROOT"' EXIT
 curl -sf --retry 15 --retry-connrefused --retry-delay 1 "$BASE/api/cards" >/dev/null || { echo "server 起不来"; cat /tmp/t1.log; exit 1; }
 
 post(){ curl -sf -X POST "$BASE/api/cards" -H 'Content-Type: application/json' -d "$1"; }
@@ -245,6 +269,18 @@ unset KANBAN_CARDS_DIR KANBAN_AGENT
 # 实测 three_kingdoms_traveler 在 .claude/skills、ai/process、ai/templates、ai/skills
 # 下各有自有文件。早先 refresh() 整目录 rm -rf 再拷，会把它们静默删掉。
 echo
+echo "══ shell 脚本静态检查 ══"
+# bash 会把多字节字符当成变量名的一部分：`$label` 后面紧跟全角括号时会被当成变量名 label（ 的一部分，
+# 在 set -u 下直接 unbound variable 崩掉。这个坑一天之内咬了三次
+# （install-into-project.sh 两次、upgrade-all.sh 一次），而且全在**错误路径**上
+# ——平时跑不到，一跑到就崩在最不该崩的地方。所以做成断言而不是靠记性。
+BADVARS=$(grep -n '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' \
+  "$REPO"/scripts/*.sh "$REPO"/tools/kanban/*.sh 2>/dev/null)
+[ -z "$BADVARS" ] \
+  && ok "没有「变量后紧跟全角字符」的写法（这种写法在 set -u 下会崩）" \
+  || no "有变量后紧跟全角字符，应改成 \${VAR}" "$BADVARS"
+
+echo
 echo "══ 分发脚本 ══"
 INSTALLER="$REPO/scripts/install-into-project.sh"
 if [ ! -f "$INSTALLER" ]; then
@@ -254,12 +290,15 @@ if [ ! -f "$INSTALLER" ]; then
   # 假通过比失败更糟，它会让人以为这个行为被守住了。
   echo "  ⏭  跳过：这是分发出来的副本，没有 install-into-project.sh（只有分发源才有）"
 else
-IT=$(mktemp -d)
+IT="$TMPROOT/inst"; mkdir -p "$IT"
 mkdir -p "$IT/ai/process" "$IT/.claude/skills/proj-own"
 echo "项目自己的流程文档" > "$IT/ai/process/proj-own.md"
 echo "项目自己的 skill"   > "$IT/.claude/skills/proj-own/SKILL.md"
 printf '{"scripts":{"test":"vitest run"}}\n' > "$IT/package.json"
-IOUT=$(bash "$INSTALLER" --prefix ZZZ --port 4499 "$IT" 2>&1)
+# --no-verify：这两次安装验的是「文件放对了没」。不关掉的话安装脚本会在目标里
+# 再跑一整套 test.sh（就是本文件），而它默认绑 4531 —— 和外层这个 server 同一个
+# 端口，嵌套那套断言会转而打到外层 server 上。自动自检本身另有专门的用例在下面测。
+IOUT=$(bash "$INSTALLER" --no-verify --prefix ZZZ --port 4499 "$IT" 2>&1)
 
 [ -f "$IT/ai/process/proj-own.md" ] \
   && ok "install 保住 ai/process 下的项目自有文件" \
@@ -280,34 +319,158 @@ echo "$IOUT" | grep -q "kanban:test" \
 
 # 目标里的 kit 文件是符号链接时，cp 会跟着它写穿到项目外面。
 # 老版本整目录 rm -rf 顺带避开了；改成逐文件合并后漏掉，安全审查时才抓出来。
-SLOUT=$(mktemp -d); SLPRJ=$(mktemp -d)
+SLOUT="$TMPROOT/outside"; SLPRJ="$TMPROOT/slink"; mkdir -p "$SLOUT" "$SLPRJ"
 echo "项目之外的文件，绝对不该被改" > "$SLOUT/outside.md"
 mkdir -p "$SLPRJ/ai/process"
 ln -s "$SLOUT/outside.md" "$SLPRJ/ai/process/workflow.md"
-bash "$INSTALLER" --prefix ZZZ --port 4499 "$SLPRJ" >/dev/null 2>&1
+bash "$INSTALLER" --no-verify --prefix ZZZ --port 4499 "$SLPRJ" >/dev/null 2>&1
 grep -q "绝对不该被改" "$SLOUT/outside.md" \
   && ok "kit 文件是符号链接时不会写穿到项目外" \
   || no "install 跟着符号链接改了项目外的文件" "$(cat "$SLOUT/outside.md")"
 [ -L "$SLPRJ/ai/process/workflow.md" ] \
   && no "覆盖后仍是符号链接" "still a symlink" \
   || ok "符号链接被替换成实体文件"
-python3 - "$REPO/distributions.json" "$SLPRJ" <<'PY' 2>/dev/null || true
+
+# ── 一条命令装到新项目：前缀推导 / 端口自动选 / package.json ──
+# package.json 的断言打在上面那两次**真实**安装的产物上，不另外再装一遍
+# （每多一次真实安装就多一条要清理的 distributions.json 登记）。
+PKGQ="import json,sys;print(json.load(open(sys.argv[1]))['scripts'].get(sys.argv[2],''))"
+chk "目标已有的 test 脚本原样保留" \
+  "$(python3 -c "$PKGQ" "$IT/package.json" test)" "vitest run"
+chk "已有 test 时看板测试改挂 kanban:test" \
+  "$(python3 -c "$PKGQ" "$IT/package.json" kanban:test)" "bash tools/kanban/test.sh"
+chk "kanban 启动脚本已自动补上" \
+  "$(python3 -c "$PKGQ" "$IT/package.json" kanban)" "node tools/kanban/server.mjs"
+[ ! -f "$SLPRJ/package.json" ] \
+  && ok "目标没有 package.json 时跳过，不凭空创建" \
+  || no "给没有 package.json 的项目凭空造了一个" "$(cat "$SLPRJ/package.json")"
+
+DT="$TMPROOT/dist"
+
+# 省略目标 = 当前目录；前缀按目录名推首字母缩写
+mkdir -p "$DT/alpha_beta_gamma"
+DOUT=$(cd "$DT/alpha_beta_gamma" && bash "$INSTALLER" --dry-run --yes 2>&1)
+echo "$DOUT" | grep -q "^前缀：  ABG" \
+  && ok "省略目标时用当前目录，前缀按目录名推导（alpha_beta_gamma → ABG）" \
+  || no "目标缺省或前缀推导不对" "$(echo "$DOUT" | head -6)"
+
+# 推导撞车必须硬停。用 d_a_s_h：它推出 DASH，而 DASH 是分发源自己的前缀，
+# 跟 distributions.json 里当下登记了谁无关——这条断言在任何机器上都成立。
+mkdir -p "$DT/d_a_s_h"
+COUT=$(bash "$INSTALLER" --dry-run --yes "$DT/d_a_s_h" 2>&1); CRC=$?
+{ [ "$CRC" -ne 0 ] && echo "$COUT" | grep -q "已被占用"; } \
+  && ok "推导出的前缀撞车时硬停，不静默改名" \
+  || no "前缀撞车没拦住" "rc=$CRC $(echo "$COUT" | tail -3)"
+
+# 前缀不可逆，非交互环境下不能把「读不到输入」当成「人按了回车」。
+# 这个坑真踩过：read 写成 `|| ANS=""`，无 tty 时静默接受了推导值。
+mkdir -p "$DT/quiet_probe"
+QOUT=$(bash "$INSTALLER" --dry-run "$DT/quiet_probe" < /dev/null 2>&1); QRC=$?
+{ [ "$QRC" -ne 0 ] && echo "$QOUT" | grep -q "读不到终端输入"; } \
+  && ok "非交互环境不静默接受推导出的前缀" \
+  || no "非交互时静默接受了推导前缀" "rc=$QRC $(echo "$QOUT" | tail -3)"
+
+# 交互确认那三条路径。这是本项目「不可逆的值由人拍板」在代码里的落点，
+# 回归掉了就等于脚本自己替人定了前缀，所以值得测。
+# expect 不是硬依赖，没有就**说出来**再跳过——静默跳过和假通过没区别。
+if command -v expect >/dev/null 2>&1; then
+  mkdir -p "$DT/interactive_probe"
+  cat > "$TMPROOT/ask.exp" <<'EXP'
+log_user 0
+set timeout 30
+spawn bash [lindex $argv 0] --dry-run [lindex $argv 1]
+expect {
+  "Ctrl-C" {}
+  timeout { puts "没等到确认提示（超时）"; exit 1 }
+  eof     { puts "没等到确认提示就结束了"; exit 1 }
+}
+send "[lindex $argv 2]\r"
+log_user 1
+expect eof
+EXP
+  ask(){ expect "$TMPROOT/ask.exp" "$INSTALLER" "$DT/interactive_probe" "$1" 2>&1; }
+
+  AOUT=$(ask "")
+  echo "$AOUT" | grep -q '"idPrefix": "IP"' \
+    && ok "交互确认：回车接受推导值（interactive_probe → IP）" \
+    || no "回车没有接受推导值" "$(echo "$AOUT" | tail -3)"
+
+  AOUT=$(ask "xyz")
+  { echo "$AOUT" | grep -q "改用前缀 XYZ" && echo "$AOUT" | grep -q '"idPrefix": "XYZ"'; } \
+    && ok "交互确认：输入别的前缀会覆盖推导值并转大写" \
+    || no "输入的前缀没有生效" "$(echo "$AOUT" | tail -3)"
+
+  AOUT=$(ask "dash")
+  echo "$AOUT" | grep -q "已被其他项目占用" \
+    && ok "交互确认：输入已被占用的前缀会被拒绝" \
+    || no "输入已占用的前缀没被拦住" "$(echo "$AOUT" | tail -3)"
+else
+  echo "  ⏭  跳过交互确认的 3 条断言：本机没有 expect"
+fi
+
+# 自动选的端口不能和已登记的、或分发源自己的撞
+mkdir -p "$DT/port_probe"
+PPORT=$(bash "$INSTALLER" --dry-run --yes "$DT/port_probe" 2>&1 \
+        | sed -n 's/^端口：  \([0-9]*\).*/\1/p')
+python3 - "$REPO/distributions.json" "$REPO/tools/kanban/config.json" "${PPORT:-0}" <<'PY'
 import json, sys
-p, t = sys.argv[1], sys.argv[2]
-d = json.load(open(p))
-d["distributions"] = [r for r in d["distributions"] if r.get("path") != t]
-with open(p, "w") as f: json.dump(d, f, ensure_ascii=False, indent=2); f.write("\n")
+reg, own, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+used = {r.get("port") for r in json.load(open(reg)).get("distributions", [])}
+used.add(json.load(open(own)).get("port"))
+raise SystemExit(0 if port and port not in used else 1)
 PY
-rm -rf "$SLOUT" "$SLPRJ"
-# 登记是测试产生的，别留在真实清单里
-python3 - "$REPO/distributions.json" "$IT" <<'PY' 2>/dev/null || true
-import json, sys
-p, t = sys.argv[1], sys.argv[2]
-d = json.load(open(p))
-d["distributions"] = [r for r in d["distributions"] if r.get("path") != t]
-with open(p, "w") as f: json.dump(d, f, ensure_ascii=False, indent=2); f.write("\n")
-PY
-rm -rf "$IT"
+[ $? -eq 0 ] \
+  && ok "自动选取的端口避开了已登记端口（选到 ${PPORT:-空}）" \
+  || no "自动选的端口和已登记的撞了" "${PPORT:-空}"
+
+# ── 装完自动跑自检 ──
+# 三条「不该跑」的路径先测，它们都不触发嵌套的 test.sh，很快。
+mkdir -p "$DT/verify_dry"
+bash "$INSTALLER" --dry-run --yes "$DT/verify_dry" 2>&1 | grep -q "^自检" \
+  && no "dry-run 也跑了自检" "dry-run 不该有自检那一段" \
+  || ok "dry-run 不跑自检"
+
+# 先捕获再匹配，**不要** `installer | grep -q`：grep -q 一匹配就退出并关掉管道，
+# 安装脚本收到 SIGPIPE 死掉，pipefail 于是把整条管道判为失败——断言明明该过却报红。
+mkdir -p "$DT/verify_skipped"
+SOUT=$(bash "$INSTALLER" --no-verify --yes "$DT/verify_skipped" 2>&1)
+echo "$SOUT" | grep -q "已用 --no-verify 跳过" \
+  && ok "--no-verify 能关掉自检" \
+  || no "--no-verify 没关掉自检" "$(echo "$SOUT" | grep '^自检')"
+
+# 第二次装同一个目标 = config.json 已存在，走 upgrade-all 的那条路径
+ROUT=$(bash "$INSTALLER" --yes "$DT/verify_skipped" 2>&1)
+echo "$ROUT" | grep -q "自检：跳过——目标不是全新安装" \
+  && ok "重装（config.json 已存在）不跑自检，批量升级不会变慢" \
+  || no "重装仍跑了自检" "$(echo "$ROUT" | grep '^自检')"
+
+# 真的跑一次自检。嵌套的 test.sh 必须换端口，否则它连上外层这个 server，
+# 整套断言就打到别人身上去了（见 249 行那段注释）。
+mkdir -p "$DT/verify_auto"
+VOUT=$(KANBAN_TEST_PORT=$((PORT + 1)) bash "$INSTALLER" --yes "$DT/verify_auto" 2>&1); VRC=$?
+{ [ "$VRC" -eq 0 ] \
+  && echo "$VOUT" | grep -q "✅ scripts/check-governance.sh" \
+  && echo "$VOUT" | grep -q "✅ tools/kanban/test.sh"; } \
+  && ok "全新安装后自动跑完两项自检并全绿" \
+  || no "自动自检没跑或没过" "rc=$VRC $(echo "$VOUT" | sed -n '/^自检/,/^$/p')"
+
+# 收尾待办里不该再有「确认 config.json」——前缀在安装时已经确认过了
+echo "$VOUT" | grep -q "确认 tools/kanban/config.json" \
+  && no "收尾仍要求人手动确认 config.json" "这一步在安装时已经做过了" \
+  || ok "收尾待办不再包含「确认 config.json」"
+
+# 自检失败要响亮且退出码非 0。用真实场景制造失败：目标已有 ai/context/ 时
+# 整个目录走 keep 分支被跳过，check-governance 要的 design-system.md 就缺了。
+mkdir -p "$DT/verify_broken/ai/context"
+echo "项目自己的情境笔记" > "$DT/verify_broken/ai/context/notes.md"
+FOUT=$(KANBAN_TEST_PORT=$((PORT + 2)) bash "$INSTALLER" --yes "$DT/verify_broken" 2>&1); FRC=$?
+{ [ "$FRC" -ne 0 ] \
+  && echo "$FOUT" | grep -q "❌ scripts/check-governance.sh" \
+  && echo "$FOUT" | grep -q "文件已经装好了"; } \
+  && ok "自检失败时响亮报错、退出码非 0，且区分「已装好」与「没过」" \
+  || no "自检失败没被报出来" "rc=$FRC $(echo "$FOUT" | tail -5)"
+
+
 fi
 
 echo

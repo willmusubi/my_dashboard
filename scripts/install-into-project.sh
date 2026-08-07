@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 # 把这套治理工作流装到另一个项目里。
 #
-#   scripts/install-into-project.sh [--dry-run] [--prefix TKT] [--port 4431] /path/to/project
+#   scripts/install-into-project.sh [选项] [/path/to/project]
+#
+#   目标省略时用**当前目录**——所以在新项目里 `cd 进去 && govkit` 就装完了。
+#   --prefix 省略时从目录名推首字母缩写（medical_tourism → MT），并**停下来等你确认**。
+#            前缀建第一张卡之后就改不动了，这种不可逆的值不该由脚本自行拍板。
+#   --port   省略时读 distributions.json 挑下一个既没登记过、也没被实际占用的端口。
+#   --yes    跳过那次确认（非交互场景用）。
+#   --dry-run 只预演，不写任何东西。
+#   --no-verify 装完不自动跑自检（默认全新安装会跑 check-governance 与看板测试）。
 #
 # 上游的同名脚本对 ai/{process,templates,checklists,skills} 和 .claude/{skills,agents}
 # 做无条件 cp -R 覆盖，无备份、无日志、无预演、无卸载——定制过的文件一跑就没。
@@ -13,21 +21,26 @@ DRY=0
 PREFIX=""
 PORT=""
 TARGET=""
+ASSUME_YES=0
+NO_VERIFY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dry-run) DRY=1; shift ;;
+    --dry-run)   DRY=1; shift ;;
+    --yes|-y)    ASSUME_YES=1; shift ;;
+    --no-verify) NO_VERIFY=1; shift ;;
     --prefix)  PREFIX="${2:-}"; shift 2 ;;
     --port)    PORT="${2:-}"; shift 2 ;;
     -h|--help)
-      sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     -*) echo "未知参数：$1"; exit 1 ;;
     *)  TARGET="$1"; shift ;;
   esac
 done
 
-[[ -n "$TARGET" ]] || { echo "用法：$0 [--dry-run] [--prefix TKT] [--port 4431] /path/to/project"; exit 1; }
+# 目标省略 = 当前目录。下面「拒绝本仓库自己」那道阀仍然管得住在源仓库里手滑直接跑。
+[[ -n "$TARGET" ]] || TARGET="$PWD"
 [[ -d "$TARGET" ]] || { echo "目标目录不存在：$TARGET"; exit 1; }
 TARGET="$(cd "$TARGET" && pwd)"
 
@@ -125,10 +138,181 @@ keep() {        # $1 = 相对路径
   run "cp -R \"$from\" \"$to\""
 }
 
+derive_prefix() {   # $1 = 目录名 → 首字母缩写。推不出来时输出空串。
+  python3 - "$1" <<'PY'
+import re, sys
+words = [w for w in re.split(r"[^A-Za-z0-9]+", sys.argv[1]) if w]
+parts = []
+for w in words:                       # 再拆 camelCase：myDashboard 也要能拆成 my + Dashboard
+    parts += [p for p in re.split(r"(?<=[a-z0-9])(?=[A-Z])", w) if p]
+if not parts:
+    print(""); raise SystemExit
+out = parts[0][:3].upper() if len(parts) == 1 else "".join(p[0] for p in parts).upper()[:5]
+out = re.sub(r"[^A-Z0-9]", "", out)
+while out and not out[0].isalpha():   # 必须字母开头，否则 id 里的数字段会和卡号连在一起有歧义
+    out = out[1:]
+print(out)
+PY
+}
+
+taken_prefixes() {  # 已被别的项目（含分发源自己）占用的前缀，一行一个
+  python3 - "$SRC/distributions.json" "$SRC/tools/kanban/config.json" "$TARGET" <<'PY'
+import json, sys
+reg, own, target = sys.argv[1], sys.argv[2], sys.argv[3]
+out = []
+try:
+    for r in json.load(open(reg)).get("distributions", []):
+        if r.get("path") != target and r.get("prefix"):
+            out.append(r["prefix"])
+except Exception:
+    pass
+try:
+    p = json.load(open(own)).get("idPrefix")
+    if p: out.append(p)
+except Exception:
+    pass
+for p in sorted(set(out)): print(p)
+PY
+}
+
+port_free() {       # $1 = 端口号；能 bind 上就算空闲
+  python3 - "$1" <<'PY'
+import socket, sys
+s = socket.socket()
+try:
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("127.0.0.1", int(sys.argv[1])))
+    raise SystemExit(0)
+except OSError:
+    raise SystemExit(1)
+finally:
+    s.close()
+PY
+}
+
+pick_port() {       # 既没在 distributions.json 登记过、也没被实际占用的最小端口
+  python3 - "$SRC/distributions.json" "$SRC/tools/kanban/config.json" "$TARGET" <<'PY'
+import json, socket, sys
+reg, own, target = sys.argv[1], sys.argv[2], sys.argv[3]
+used = set()
+try:
+    for r in json.load(open(reg)).get("distributions", []):
+        if r.get("path") != target and isinstance(r.get("port"), int):
+            used.add(r["port"])
+except Exception:
+    pass
+try:
+    p = json.load(open(own)).get("port")
+    if isinstance(p, int): used.add(p)
+except Exception:
+    pass
+
+def free(p):
+    s = socket.socket()
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", p)); return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+for p in range(4430, 4600):
+    if p not in used and free(p):
+        print(p); raise SystemExit
+print("")
+PY
+}
+
+# ── 前缀与端口：在**动任何文件之前**定好 ──
+# 顺序是刻意的。确认提示要是出现在 63 个文件拷完之后，人一旦 Ctrl-C 就留下一个
+# 装了一半的项目——而这个脚本没有卸载命令。
+CFGF="$TARGET/tools/kanban/config.json"
+CFG_EXISTS=0; [[ -e "$CFGF" ]] && CFG_EXISTS=1
+PREFIX_DERIVED=0
+PREFIX_NOTE=""; PORT_NOTE=""
+
+if [[ "$CFG_EXISTS" -eq 1 ]]; then
+  # 重装 / upgrade-all 的情形。config.json 是 project-owned，本来就不会被覆盖，
+  # 这时既不推导也不提示——批量升级不能被一个交互式提问卡住。
+  # 路径走 argv，不要插进 python 源码字符串——目录名里一个单引号就能把它拆了
+  CUR_PREFIX="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("idPrefix",""))' "$CFGF" 2>/dev/null)"
+  CUR_PORT="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("port",""))' "$CFGF" 2>/dev/null)"
+  PREFIX_NOTE="目标已有 config.json，沿用"
+  PORT_NOTE="目标已有 config.json，沿用"
+else
+  if [[ -n "$PREFIX" ]]; then
+    CUR_PREFIX="$PREFIX"; PREFIX_NOTE="--prefix 指定"
+  else
+    CUR_PREFIX="$(derive_prefix "$(basename "$TARGET")")"
+    PREFIX_DERIVED=1
+    PREFIX_NOTE="从目录名 $(basename "$TARGET") 推导"
+    [[ -n "$CUR_PREFIX" ]] || {
+      echo "从目录名「$(basename "$TARGET")」推不出可用的前缀（要求字母开头）。"
+      echo "请显式指定：--prefix XXX"; exit 1; }
+  fi
+
+  [[ "$CUR_PREFIX" =~ ^[A-Z][A-Z0-9]{0,5}$ ]] || {
+    echo "前缀「${CUR_PREFIX}」不合法：要求大写字母开头、只含大写字母与数字、最多 6 位。"; exit 1; }
+
+  if taken_prefixes | grep -qx "$CUR_PREFIX"; then
+    if [[ "$PREFIX_DERIVED" -eq 1 ]]; then
+      # 推导撞车必须硬停：静默换一个名字，等于脚本替人做了不可逆决定。
+      echo "推导出的前缀「${CUR_PREFIX}」已被占用："
+      taken_prefixes | sed 's/^/  /'
+      echo "卡号前缀撞车会让两个项目的卡片 id 混在一起。请显式指定：--prefix XXX"
+      exit 1
+    fi
+    PREFIX_NOTE="$PREFIX_NOTE ⚠️ 该前缀已被其他项目占用"
+  fi
+
+  if [[ -n "$PORT" ]]; then
+    CUR_PORT="$PORT"; PORT_NOTE="--port 指定"
+    port_free "$CUR_PORT" || PORT_NOTE="$PORT_NOTE ⚠️ 该端口当前已被占用，server 会起不来"
+  else
+    CUR_PORT="$(pick_port)"
+    PORT_NOTE="自动选取，避开已登记与监听中的端口"
+    [[ -n "$CUR_PORT" ]] || { echo "4430-4599 之间找不到空闲端口。请显式指定：--port NNNN"; exit 1; }
+  fi
+fi
+
 say "源：    $SRC"
 say "目标：  $TARGET"
 [[ "$DRY" -eq 1 ]] && say "模式：  预演（不会写任何东西）" || say "模式：  实际安装，覆盖前备份到 $BACKUP"
+say "前缀：  ${CUR_PREFIX}（${PREFIX_NOTE}）"
+say "端口：  ${CUR_PORT}（${PORT_NOTE}）"
 say ""
+
+# 只在前缀是**推导**出来的时候停下来确认。显式传了 --prefix 就是人已经决定过了；
+# config.json 已存在就更不用问。这样 upgrade-all.sh 与既有测试都不会被卡住。
+if [[ "$PREFIX_DERIVED" -eq 1 && "$ASSUME_YES" -eq 0 ]]; then
+  if [[ ! -r /dev/tty ]]; then
+    echo "没有可用的终端，无法确认推导出的前缀。请显式传 --prefix，或加 --yes 接受推导值。"
+    exit 1
+  fi
+  say "⚠️  卡片前缀是**不可逆**的：建第一张卡之后再改，会让整块看板失效。"
+  printf '    回车接受 %s，或直接输入要用的前缀（Ctrl-C 放弃）： ' "$CUR_PREFIX"
+  # read 的**返回码**必须查。写成 `read ... || ANS=""` 的话，非交互环境下 read 立刻
+  # 失败、ANS 为空，代码就当成「人按了回车」——等于静默替人接受了一个不可逆的前缀。
+  # 这正是这次确认要防的事。读不到就停，不要猜。
+  if ! IFS= read -r ANS < /dev/tty; then
+    say ""
+    echo "读不到终端输入（非交互环境），无法确认推导出的前缀。"
+    echo "请显式传 --prefix XXX，或加 --yes 表示接受推导值 ${CUR_PREFIX}。"
+    exit 1
+  fi
+  ANS="$(printf '%s' "$ANS" | tr -d '[:space:]')"
+  if [[ -n "$ANS" ]]; then
+    CUR_PREFIX="$(printf '%s' "$ANS" | tr '[:lower:]' '[:upper:]')"
+    [[ "$CUR_PREFIX" =~ ^[A-Z][A-Z0-9]{0,5}$ ]] || {
+      echo "前缀「${CUR_PREFIX}」不合法：要求大写字母开头、只含大写字母与数字、最多 6 位。"; exit 1; }
+    if taken_prefixes | grep -qx "$CUR_PREFIX"; then
+      echo "前缀「${CUR_PREFIX}」已被其他项目占用，换一个。"; exit 1
+    fi
+    say "    改用前缀 ${CUR_PREFIX}"
+  fi
+  say ""
+fi
 
 say "kit-owned（每次刷新到最新）："
 for p in \
@@ -162,11 +346,8 @@ fi
 # 环境里不会有 KANBAN_*，也不会去 source 任何 .env。只放环境变量的话，分发出去后
 # hook 的正则仍是源项目的前缀，自动注入静默失效——看起来一切正常，实际通道断了。
 # 而且这个文件**无条件写**：不写的话目标项目会沿用默认 DASH/4430，直接和源项目撞端口。
-CFGF="$TARGET/tools/kanban/config.json"
-CUR_PREFIX="${PREFIX:-DASH}"
-CUR_PORT="${PORT:-4430}"
 say ""
-if [[ -e "$CFGF" ]]; then
+if [[ "$CFG_EXISTS" -eq 1 ]]; then
   say "保留目标版本  tools/kanban/config.json（已存在，不覆盖）"
   say "  当前内容：$(tr -d '\n ' < "$CFGF")"
 else
@@ -177,14 +358,77 @@ else
 }"
   printf '%s\n' "$BODY" | sed 's/^/  /'
   [[ "$DRY" -eq 1 ]] || { mkdir -p "$(dirname "$CFGF")"; printf '%s\n' "$BODY" > "$CFGF"; }
-  if [[ -z "$PREFIX" ]]; then
-    say "  ⚠️  没指定 --prefix，用了默认 DASH。**建第一张卡之前**改掉它，"
-    say "      否则和其他项目的卡片 id 混在一起；建卡之后再改会让整块看板失效。"
-  fi
-  if [[ -z "$PORT" ]]; then
-    say "  ⚠️  没指定 --port，用了默认 4430。若该端口已被其他项目的看板占用，"
-    say "      server 会直接退出（lsof -i :4430 可查）。"
-  fi
+fi
+
+# ── package.json：把看板脚本挂上去 ──
+# 只加不改：目标已有的 test 脚本绝不覆盖（实测 three_kingdoms_traveler 的 test 是
+# `vitest run`，覆盖掉就毁了它真正的测试命令），这时看板测试挂到 kanban:test。
+say ""
+PKGF="$TARGET/package.json"
+if [[ ! -f "$PKGF" ]]; then
+  say "package.json 不存在 —— 跳过。手动跑看板：node tools/kanban/server.mjs"
+else
+  say "package.json（只加不改，已有的脚本一律保留）："
+  # 备份交给 python 在**确定要写**的那一刻做。无条件先备份的话，批量升级时
+  # 每个项目都会多出一个只装着没改动的 package.json 的备份目录。
+  python3 - "$PKGF" "$DRY" "$BACKUP/package.json" <<'PY'
+import json, os, re, shutil, sys
+path, dry, backup = sys.argv[1], sys.argv[2] == "1", sys.argv[3]
+raw = open(path).read()
+try:
+    data = json.loads(raw)
+except Exception as e:
+    print("  package.json 解析失败，未改动：%s" % e); raise SystemExit
+if not isinstance(data, dict):
+    print("  package.json 顶层不是 object，未改动"); raise SystemExit
+
+# 沿用原文件的缩进，别把人家的 package.json 整个重排出一坨 git 噪音
+m = re.search(r'\n(\s+)"', raw)
+indent = m.group(1) if m else "  "
+indent = "\t" if indent.startswith("\t") else len(indent.replace("\t", "  "))
+
+scripts = data.setdefault("scripts", {})
+if not isinstance(scripts, dict):
+    print("  package.json 的 scripts 不是 object，未改动"); raise SystemExit
+changed = []
+KANBAN = "node tools/kanban/server.mjs"
+TESTCMD = "bash tools/kanban/test.sh"
+
+if scripts.get("kanban") == KANBAN:
+    print('  已有        "kanban"')
+elif "kanban" in scripts:
+    print('  保留目标版本 "kanban": %s（与 kit 的不同，不覆盖）' % json.dumps(scripts["kanban"], ensure_ascii=False))
+else:
+    scripts["kanban"] = KANBAN; changed.append("kanban")
+
+if "test" not in scripts:
+    key = "test"
+elif scripts["test"] == TESTCMD:
+    key = None; print('  已有        "test"')
+else:
+    key = "kanban:test"
+    print('  保留目标版本 "test": %s —— 看板测试改挂 kanban:test' % json.dumps(scripts["test"], ensure_ascii=False))
+if key:
+    if scripts.get(key) == TESTCMD:
+        print('  已有        "%s"' % key)
+    elif key in scripts:
+        print('  保留目标版本 "%s": %s（不覆盖）' % (key, json.dumps(scripts[key], ensure_ascii=False)))
+    else:
+        scripts[key] = TESTCMD; changed.append(key)
+
+for k in changed:
+    print('  %s      "%s": "%s"' % ("将新增" if dry else "新增  ", k, scripts[k]))
+if not changed:
+    print("  package.json 无需改动")
+    raise SystemExit(0)
+if not dry:
+    os.makedirs(os.path.dirname(backup), exist_ok=True)
+    shutil.copy2(path, backup)
+    out = json.dumps(data, ensure_ascii=False, indent=indent)
+    open(path, "w").write(out + ("\n" if raw.endswith("\n") else ""))
+raise SystemExit(10)          # 10 = 确实改了，让外层把它算进「覆盖」并提示备份位置
+PY
+  [[ "$?" -eq 10 ]] && N_OVER+=1
 fi
 
 say ""
@@ -225,39 +469,72 @@ with open(reg_path, "w") as f:
 print("  已登记到 distributions.json（共 %d 个项目）" % len(rows))
 PY
 
+  # 看板测试挂在哪个 key 上，取决于目标原本有没有自己的 test 脚本
+  # （实测 tkt 的是 vitest run，被覆盖掉就毁了它真正的测试命令）。
+  # 读**改完之后**的实际值，不要凭安装前的状态猜。
+  KTEST="$(python3 -c '
+import json, sys
+try: s = json.load(open(sys.argv[1])).get("scripts", {})
+except Exception: s = {}
+print("kanban:test" if s.get("kanban:test") else ("test" if s.get("test") else ""))
+' "$PKGF" 2>/dev/null)"
+  [[ -n "$KTEST" ]] && KTESTCMD="npm run $KTEST" || KTESTCMD="bash tools/kanban/test.sh"
+  [[ -f "$PKGF" ]]  && KRUNCMD="npm run kanban"  || KRUNCMD="node tools/kanban/server.mjs"
+
+  # ── 自检：能自动跑的就别留给人手动跑 ──
+  # 只在**全新安装**时跑。重装 / upgrade-all 的路径上 kit 刚在分发源跑过完整测试，
+  # 每个项目再跑十几秒没有新信息，只会让批量升级变慢。
+  VERIFY_FAILED=0
   say ""
-  say "接下来（在目标项目里）："
-  say "  1. 确认 tools/kanban/config.json 的 idPrefix 是 ${CUR_PREFIX}、port 是 ${CUR_PORT}"
-  say "     —— 前缀**建第一张卡之前**定好，之后再改会让整块看板失效"
-  # 已有 test 脚本的项目照抄这条会毁掉它真正的测试命令（实测 tkt 的是 vitest run）
-  EXIST_TEST="$(python3 -c "
-import json
-try: print(json.load(open('$TARGET/package.json')).get('scripts',{}).get('test',''))
-except Exception: print('')
-" 2>/dev/null)"
-  say "  2. package.json 加脚本： \"kanban\": \"node tools/kanban/server.mjs\","
-  if [[ -n "$EXIST_TEST" ]]; then
-    say "                          \"kanban:test\": \"bash tools/kanban/test.sh\""
-    # 必须写 ${}：后面紧跟全角「）」，不加花括号时 bash 会把多字节字符
-    # 当成变量名的一部分，在 set -u 下直接报 unbound variable
-    say "     ⚠️  该项目已有 test 脚本（${EXIST_TEST}）——**不要覆盖它**，"
-    say "         看板的测试单独挂在 kanban:test 上。"
+  if [[ "$NO_VERIFY" -eq 1 ]]; then
+    say "自检：已用 --no-verify 跳过。想跑：bash scripts/check-governance.sh && ${KTESTCMD}"
+  elif [[ "$CFG_EXISTS" -eq 1 ]]; then
+    say "自检：跳过——目标不是全新安装，kit 已在分发源验证过。想跑：${KTESTCMD}"
   else
-    say "                          \"test\": \"bash tools/kanban/test.sh\""
+    say "自检（在目标项目里跑，看板测试用临时目录，不碰真实卡片）："
+    verify_step() {   # $1 = 显示名，其余 = 要跑的命令
+      local label="$1"; shift
+      local out rc
+      out="$(cd "$TARGET" && "$@" 2>&1)"; rc=$?
+      if [[ "$rc" -eq 0 ]]; then
+        say "  ✅ $label"
+        printf '%s\n' "$out" | grep -E '^通过|passed' | sed 's/^/       /' \
+          || printf '%s\n' "$out" | tail -1 | sed 's/^/       /'
+      else
+        say "  ❌ ${label}（退出码 ${rc}）"
+        printf '%s\n' "$out" | tail -20 | sed 's/^/       /'
+        VERIFY_FAILED=1
+      fi
+    }
+    verify_step "scripts/check-governance.sh" bash scripts/check-governance.sh
+    verify_step "tools/kanban/test.sh"        bash tools/kanban/test.sh
   fi
-  say "  3. bash scripts/check-governance.sh   自检"
-  if [[ -n "$EXIST_TEST" ]]; then
-    say "  4. npm run kanban:test                确认看板可用（跑在临时目录，不碰真实卡片）"
-  else
-    say "  4. npm test                           确认看板可用（跑在临时目录，不碰真实卡片）"
-  fi
-  say "  5. npm run kanban                     打开 http://127.0.0.1:${CUR_PORT}"
-  say "  6. hook 要开一个**新的 Claude Code 会话**才生效（本次会话启动时"
+
+  say ""
+  say "接下来（在目标项目里）——只剩这 3 步，都是脚本代劳不了的："
+  say "  1. ${KRUNCMD}   →  http://127.0.0.1:${CUR_PORT}"
+  say "     （长驻进程，所以不替你起——起了你也不知道它在跑）"
+  say "  2. 开一个**新的** Claude Code 会话，hook 才生效（本次会话启动时"
   say "     目标项目还没有 .claude/settings.json，配置 watcher 没在监视它）"
+  say "  3. 在那个会话里跑 project-kickoff，把想法拆成 Epic → Story → Task 建进看板"
+  say ""
+  say "  看板配置：idPrefix=${CUR_PREFIX}、port=${CUR_PORT}"
+  say "  —— 前缀已定案，**建第一张卡之后不要再改**，改了整块看板会失效。"
   say ""
   say "  这些文件会随 git push 一起走，但不会进构建产物（dist/）。"
   say "  要开源该项目的话，先读 README「装了之后，发布会带上这些文件吗」一节。"
   say "  本仓库有改进后，用 scripts/upgrade-all.sh 一次推给所有装过的项目。"
   say ""
   say "  卸载：删掉 ai/、tools/kanban/、.claude/{skills,agents,settings.json}、scripts/check-governance.sh"
+
+  # 自检没过要以非 0 退出，否则淹在 40 行收尾提示里没人看得见。
+  # 措辞必须把「文件装好了」和「自检没过」分开——不然人会以为安装本身失败了，
+  # 跑去重装，而重装因为 config.json 已存在反倒会跳过自检，问题就此隐形。
+  if [[ "$VERIFY_FAILED" -eq 1 ]]; then
+    say ""
+    say "⚠️  文件已经装好了（上面的汇总是真的），但**自检没过**——原因在上面 ❌ 那几行。"
+    say "    先修掉再开工：装一套自己都跑不过的治理流程，比不装更糟。"
+    say "    修完重跑自检用 ${KTESTCMD}，不要重装——重装会因为 config.json 已存在而跳过自检。"
+    exit 1
+  fi
 fi
