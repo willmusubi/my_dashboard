@@ -1,0 +1,93 @@
+{
+  "id": "DASH-035",
+  "title": "全新安装会把分发源的 epics.json 原样种进目标",
+  "content": "## 目标\n全新安装的项目，`tools/kanban/epics.json` 应该是空的，而不是分发源自己的 Epic。\n\n## 背景\n`install-into-project.sh` 把 `tools/kanban/epics.json` 放在 `keep` 列表里——\n目标没有就从分发源**复制一份过去**。于是 `real_rpg` 装完之后带着 my_dashboard\n自己的四个 Epic（看板可用性 / 人机决策通道 / 简体化与文档 / 分发能力）。\n\n对比之下 `cards/` 的处理是对的：只建空骨架 + `.gitkeep`，绝不复制分发源的卡片。\n`epics.json` 应当一致——它和 `cards/` 一样是「那个项目的内容」，不是 kit 内容。\n\n影响：新项目一开局，看板「蓝图」分页显示四个毫不相干的 Epic，完成度也是错的。\n`project-kickoff` 步骤 3 要「写进 epics.json 的 epics[]」，agent 若用追加而非替换，\n污染就留下来了。medical_tourism 与 three_kingdoms_traveler 各自 kickoff / 迁移时\n已经换掉，real_rpg 也已在 2026-08-08 kickoff 后换成自己的 27 个 Epic——\n**但脚本的缺陷还在，下一个新项目照样中招。**\n\n## 范围\n- `scripts/install-into-project.sh`：`epics.json` 从 `keep` 列表移出，改成\n  「目标没有就写一份 `{\"epics\": []}`」，与 `cards/` 的处理方式一致；已存在则原样不动。\n- `tools/kanban/test.sh`：补断言——全新安装后 `epics.json` 是空数组，\n  且不含分发源的任何 Epic 名称。\n\n## 非目标\n- 不改已装的三个项目（它们的 epics.json 已经是自己的了）。\n- 不动 `cards/` 的既有处理（本来就是对的，本卡以它为范本）。\n- 不改界面在 epics 为空时的显示——若那时蓝图页很难看，另立卡。\n\n## 情境包\n- `install-into-project.sh` 的 project-owned 列表（约 `:330`）与紧随其后的\n  `cards/` 空骨架处理（约 `:337`），后者就是要照抄的模式。\n- `tools/kanban/epics.json` 的 schema：`{\"epics\": [{name, definition, stories: [...]}]}`。\n- `ai/skills/project-kickoff.md:89` 是写入 epics.json 的地方。\n\n## 验收标准\n- 全新安装后目标的 `epics.json` 是 `{\"epics\": []}`。\n- 目标已有 `epics.json` 时一个字节都不动。\n- 界面在 epics 为空时不报错（打开蓝图页确认）。\n\n## 验证契约\n- `npm test`\n- 临时目录全新安装一次，检查 epics.json 内容\n- 起 server 打开蓝图页确认空 epics 不炸",
+  "stage": "verify",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-08-08",
+  "updatedAt": "2026-08-09T23:07:27+07:00",
+  "rev": 7,
+  "epic": "分发能力",
+  "userStory": "安全分发",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "编辑 scripts/install-into-project.sh：epics.json 从 keep 名单移出，改成照 cards/ 的模式——目标没有就写 {\"epics\": []}，已存在则原样不动并报出 Epic 数",
+      "编辑 README.md：②类那一格补上「目标没有时只给空骨架或模板，绝不复制分发源的内容」",
+      "编辑 tools/kanban/test.sh：新增 2 条断言",
+      "bash -n scripts/install-into-project.sh → 语法 OK",
+      "npm test → card-store 单元 93/0；HTTP 集成 87/0（原 85，本卡 +2）",
+      "bash scripts/check-governance.sh → governance kit check passed",
+      "全新安装实测：输出「新建 tools/kanban/epics.json（空）」，文件内容 { \"epics\": [] }，python 解析 OK",
+      "重装实测：输出「保留目标版本 tools/kanban/epics.json（0 个 Epic）」，不改动",
+      "upgrade-all --dry-run：三个真实目标各自的 Epic 原样保留（MT 20 个、real_rpg 27 个、TKT 6 个）",
+      "空 epics 的界面实测：在全新安装目录上起 server（4444），浏览器切到蓝图分页 → 渲染出引导文案，display=block，**零运行时报错**，卡片数 0",
+      "跑完 distributions.json 只剩 MT / RR / TKT，无测试残留"
+    ],
+    "findings": [
+      "**本卡还掉的是 DASH-034 留下的债。** 034 在 install-into-project.sh:139-140 写下「② 内容天生属于项目，kit 只该给空骨架或模板（… epics.json …）」，但代码没跟上——epics.json 仍走 keep() 的 cp -R。注释与实现不符比两者都错更糟：下一个读注释的人会以为已经修了，不会再去核对。现在两者一致。",
+      "cards/ 与 config.json 早就做对了（空骨架 / 按参数生成），epics.json 是同一批里唯一漏掉的。照抄旁边 cards/ 那 6 行即可，没有新设计。",
+      "顺手在「保留目标版本」那行报出目标现有的 Epic 数（MT 20 / real_rpg 27 / TKT 6）。跟 cards/ 报「N 张卡」对齐——保留了什么要说出来，静默保留和静默删除一样糟（这是本脚本既有的原则）。",
+      "ai/context 与 ai/artifacts 留在 keep 里是对的，不是漏改：实测分发源那几份全是「状态：模板占位符」与写法说明，cp 过去给的是空表格而不是内容，符合②的定义。已在代码注释里写明这一点，免得下一个人以为它们也该改。",
+      "**顺带发现、不属于本卡**：看板空 epics 时的引导文案（index.html:736）叫人走「spec-interrogation → implementation-plan」，而 AGENTS.md:38 说「全新项目…先跑 project-kickoff」。两处对新项目入口的说法不一致，而这段文案正是每个全新安装第一眼看到的东西。本卡非目标明写「不改界面在 epics 为空时的显示，难看就另立卡」，故不动。"
+    ],
+    "residual": "① **看板空状态文案与 AGENTS.md 对「新项目从哪开始」说法不一致**（index.html:736 说 spec-interrogation → implementation-plan；AGENTS.md:38 说 project-kickoff）。**要有人跟**：需要人决定以哪个为准，再改另一处。已列进本轮收尾 Todo。这也正是用户几轮前问过的「先聊 idea 还是直接 kickoff」——界面当时给的答案和文档不一样。\\n\\n② 已装的三个项目不受本卡影响（它们的 epics.json 早已是自己的内容）。**不用跟**：upgrade-all --dry-run 实测三家各自的 Epic 原样保留。\\n\\n③ 空骨架写的是 `{ \"epics\": [] }` 单行，而分发源那份是多行缩进的。**不用跟**：JSON 合法、界面解析正常，且这个文件一旦 kickoff 就会被整个重写。\\n\\n④ 本卡只保证 kit **不再种**污染，不会去清理已经被污染的项目。**不用跟**：三个已装项目实测都不含分发源的 Epic，没有存量要清。"
+  },
+  "comments": [
+    {
+      "id": "c-20260809T225615-6169",
+      "at": "2026-08-09T22:56:15+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-09T22:56:15+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户本轮说「做。请继续」，指的是我上一轮收尾 Todo 第 1 条——DASH-035 要不要做。据此勾 gates.product 与 readiness.human_approval_recorded，授权范围仅限本卡。\n\n开卡后新增的理由（DASH-034 造成的）：034 在 install-into-project.sh:139-140 写下注释「② 内容天生属于项目，kit 只该给空骨架或模板（… epics.json …）」，但代码没跟上——epics.json 仍走 keep() 的 cp -R，给的是分发源的 4 个 Epic。注释与实现不符比两者都错更糟，下一个读注释的人会以为已经修了。"
+    },
+    {
+      "id": "c-20260809T230727-1adf",
+      "at": "2026-08-09T23:07:27+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-09T23:07:27+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "关卡勾选留痕：test 与 code_review 自行勾。low + backend 的必需关卡是 product / test / code_review 三项，现已齐（product 在本轮依用户「做。请继续」的授权勾过）。"
+    }
+  ]
+}

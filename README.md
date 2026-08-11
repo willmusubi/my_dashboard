@@ -93,10 +93,21 @@ scripts/install-into-project.sh [--dry-run] [--yes] [--no-verify] [--prefix TKT]
 2. 开一个**新的** Claude Code 会话，hook 才生效
 3. 在那个会话里跑 `project-kickoff`，把想法拆成 Epic → Story → Task 建进看板
 
-kit 文件每次刷新（覆盖前备份到 `.kanban-backup-<时间戳>/`），
-而 `CLAUDE.md`、`ai/context/`、`ai/artifacts/`、`epics.json`、`cards/` 属于目标项目，
-**存在就永不碰**。会拒绝 `$HOME`、拒绝本仓库自己、拒绝目标 `.claude` 是符号链接
-（`cp -R` 会跟随它写进全局 `~/.claude`）。
+kit 文件每次刷新（覆盖前备份到 `.kanban-backup-<时间戳>/`）。会拒绝 `$HOME`、
+拒绝本仓库自己、拒绝目标 `.claude` 是符号链接（`cp -R` 会跟随它写进全局 `~/.claude`）。
+
+**project-owned 的东西存在就永不碰**，但它其实分两类，需要的行为相反：
+
+| 类别 | 有哪些 | 行为 |
+| --- | --- | --- |
+| ① kit 有正本，项目可能在上面追加 | `AGENTS.md`、`CLAUDE.md`、`.claude/settings.json` | 不覆盖，但**报告「kit 有、你没有」的行**，让你自己决定要不要合 |
+| ② 内容天生属于项目 | `ai/context/`、`ai/artifacts/`、`epics.json`、`cards/`、`config.json` | 不覆盖，也不报漂移（内容本来就该不一样）；目标没有时只给**空骨架或模板**，绝不复制分发源的内容 |
+
+第 ① 类光是「不覆盖」不够：kit 更新了规则，已装项目**永远拿不到而且无声无息**。
+所以每次安装/升级都会把差异列出来——只报告，不自动合并（散文的自动合并不可靠，
+出错时人也看不出来），而且只报 kit → 目标 这一个方向：你自己加的行是你的权利，
+不是漂移。目标那份也可能是**刻意**改写过的（例如把 `npm test` 改成 `kanban:test`），
+照抄前先看清楚。
 
 一份 63 个文件、416K，其中约 332K 各项目完全相同。**每个项目装一份是对的**，
 不是将就——卡片是那个项目的审计轨迹要随 git 走，hook 是项目级的

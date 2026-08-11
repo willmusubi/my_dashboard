@@ -246,6 +246,24 @@ chk "CLI 拦住 agent 下决策 → 退出码 1" "$?" "1"
 $CLI ask "$CC" --text "这个要问人" >/dev/null 2>&1
 chk "ask 写入 question" \
   "$(curl -s "$BASE/api/cards" | jq_ "[c['kind'] for c in [x for x in d if x['id']=='$CC'][0]['comments'] if c['kind']=='question'][0]")" "question"
+
+# 提问 = 停下来等人，卡片必须跟着换车道。不换的话它继续占着 implementing 的
+# WIP 名额、看起来像在做，实际在等人——而人看的是车道，不是 cli.mjs open。
+stage_of(){ curl -s "$BASE/api/cards" | jq_ "[x for x in d if x['id']=='$CC'][0]['stage']"; }
+chk "ask 把卡片推进 blocked" "$(stage_of)" "blocked"
+$CLI ask "$CC" --text "再问一句" >/dev/null 2>&1
+chk "已在 blocked 时再 ask 不报错（退出码 0）" "$?" "0"
+chk "已在 blocked 时再 ask 不乱动 stage" "$(stage_of)" "blocked"
+# --no-block：只想记一笔、活还能继续
+$CLI stage "$CC" implementing >/dev/null 2>&1
+$CLI ask "$CC" --text "顺口一问，活还能继续" --no-block >/dev/null 2>&1
+chk "--no-block 时 stage 保持不动" "$(stage_of)" "implementing"
+# 在已完成的卡上追问，不该把它拖回未完成状态
+$CLI stage "$CC" done >/dev/null 2>&1
+$CLI ask "$CC" --text "事后追问" >/dev/null 2>&1
+chk "done 的卡上 ask 不回退 stage" "$(stage_of)" "done"
+$CLI stage "$CC" backlog >/dev/null 2>&1
+
 $CLI stage "$CC" ready >/dev/null 2>&1
 chk "stage 推进生效" \
   "$(curl -s "$BASE/api/cards" | jq_ "[x for x in d if x['id']=='$CC'][0]['stage']")" "ready"
@@ -263,6 +281,11 @@ chk "server 不可达时回退到文件仍能写入" \
   "$(python3 -c "
 import json;d=json.load(open('$CARDS/$CC.json'))
 print('yes' if any(c['text']=='server 关着写的' for c in d['comments']) else 'no')")" "yes"
+# 人不会一直开着看板，所以 ask 推 blocked 在文件回退路径上也必须成立
+KANBAN_PORT=4999 $CLI stage "$CC" implementing >/dev/null 2>&1
+KANBAN_PORT=4999 $CLI ask "$CC" --text "server 关着时提的问" >/dev/null 2>&1
+chk "server 不可达时 ask 也把卡推进 blocked" \
+  "$(python3 -c "import json;print(json.load(open('$CARDS/$CC.json'))['stage'])")" "blocked"
 unset KANBAN_CARDS_DIR KANBAN_AGENT
 
 # ── 分发脚本：kit 目录里的项目自有文件必须活下来 ──
@@ -345,6 +368,19 @@ chk "kanban 启动脚本已自动补上" \
   && ok "目标没有 package.json 时跳过，不凭空创建" \
   || no "给没有 package.json 的项目凭空造了一个" "$(cat "$SLPRJ/package.json")"
 
+# epics.json 属「内容天生属于项目」那一类，kit 只该给空骨架——和 cards/ 一样。
+# 早先它在 keep 名单里，于是新项目装完带着**分发源自己的 Epic**（real_rpg 实测中招）。
+chk "全新安装的 epics.json 是空数组" \
+  "$(python3 -c "import json;print(json.load(open('$IT/tools/kanban/epics.json'))['epics'])")" "[]"
+# 光看「是空的」不够：要确认里面没有分发源的任何一个 Epic 名字
+SRC_EPICS=$(python3 -c "
+import json;print('|'.join(e['name'] for e in json.load(open('$REPO/tools/kanban/epics.json'))['epics']))")
+if [ -n "$SRC_EPICS" ] && grep -qE "$SRC_EPICS" "$IT/tools/kanban/epics.json"; then
+  no "新项目的 epics.json 里混进了分发源的 Epic" "$(cat "$IT/tools/kanban/epics.json")"
+else
+  ok "新项目的 epics.json 不含分发源的任何 Epic"
+fi
+
 DT="$TMPROOT/dist"
 
 # 省略目标 = 当前目录；前缀按目录名推首字母缩写
@@ -422,6 +458,39 @@ PY
 [ $? -eq 0 ] \
   && ok "自动选取的端口避开了已登记端口（选到 ${PPORT:-空}）" \
   || no "自动选的端口和已登记的撞了" "${PPORT:-空}"
+
+# ── project-owned 文档漂移检测（只报告，绝不覆盖）──
+# keep 名单里混着两类：① kit 有正本、项目可能追加（AGENTS/CLAUDE/settings.json）——
+# 要报漂移；② 内容天生属于项目（epics.json / ai/context）——报了全是噪音。
+DR="$DT/drift_probe"; mkdir -p "$DR/tools/kanban"
+python3 - "$REPO/AGENTS.md" "$DR/AGENTS.md" <<'PY'
+import sys
+lines = open(sys.argv[1]).read().split("\n")
+out = [l for l in lines if "从情境探索开始" not in l]   # 比 kit 少一行
+out.append("- 这是项目自己加的规则，kit 里没有。")       # 比 kit 多一行
+open(sys.argv[2], "w").write("\n".join(out))
+PY
+cp "$REPO/CLAUDE.md" "$DR/CLAUDE.md"                    # 与 kit 完全一致 → 不该有噪音
+printf '{"epics":[{"name":"项目自己的 Epic","definition":"x","stories":[]}]}\n' \
+  > "$DR/tools/kanban/epics.json"
+SUM_A=$(shasum "$DR/AGENTS.md" | cut -d' ' -f1)
+SUM_C=$(shasum "$DR/CLAUDE.md" | cut -d' ' -f1)
+DROUT=$(bash "$INSTALLER" --no-verify --yes "$DR" 2>&1)
+
+echo "$DROUT" | grep -q "从情境探索开始" \
+  && ok "漂移检测报出「kit 有、目标没有」的行" \
+  || no "没报出目标缺的那行" "$(echo "$DROUT" | grep -A8 'AGENTS.md' | head -10)"
+echo "$DROUT" | grep -q "这是项目自己加的规则" \
+  && no "把目标自己加的行也报成漂移了" "只该报 kit → 目标 一个方向" \
+  || ok "目标自己加的行不报告（只报一个方向）"
+# CLAUDE.md 与 kit 一致、epics.json 属第二类，两者都不该出现在漂移报告里
+chk "只有真漂了的第一类文档才报（应恰好 1 处）" "$(echo "$DROUT" | grep -c 'kit 版有')" "1"
+# 最要紧的一条：报告归报告，一个字节都不许动
+chk "AGENTS.md 未被改动" "$(shasum "$DR/AGENTS.md" | cut -d' ' -f1)" "$SUM_A"
+chk "CLAUDE.md 未被改动" "$(shasum "$DR/CLAUDE.md" | cut -d' ' -f1)" "$SUM_C"
+chk "第二类的 epics.json 保持目标版本" \
+  "$(python3 -c "import json;print(json.load(open('$DR/tools/kanban/epics.json'))['epics'][0]['name'])")" \
+  "项目自己的 Epic"
 
 # ── 装完自动跑自检 ──
 # 三条「不该跑」的路径先测，它们都不触发嵌套的 test.sh，很快。

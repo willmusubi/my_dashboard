@@ -1,0 +1,102 @@
+{
+  "id": "DASH-033",
+  "title": "blocked 车道接上：agent 提问后把卡推进去，别占着 implementing",
+  "content": "## 目标\n让 `blocked` 车道真的会被用到——agent 停下来等人时，卡片要看得出来是在等人。\n\n## 背景\n用户观察到 `blocked` 从来没出现过卡片。查证：\n\n- `cli.mjs` 的 `ask` 只写一条 question 留言 + 打印「现在停下来」，**不改 stage**。\n- `ai/skills/board-card.md`（agent 真正读的那份协议）里 `blocked` 出现 **0 次**。\n  只有 `ai/process/kanban.md:25` 的车道表定义过它，没有任何东西告诉 agent 何时进去。\n\n后果不只是车道空着：那张卡停在 `implementing`，**占着 WIP 名额（上限 3）、\n看起来像在做，实际在等人**。信息本来是有的——`cli.mjs open` 分得清「等人 / 等 agent」\n——但没反映到车道上，而车道才是人看的东西。\n\n## 范围\n- `tools/kanban/cli.mjs`：`ask` 成功后把卡推到 `blocked`（已经是 `blocked` 或 `done` 就不动），\n  并在输出里说明推了。加 `--no-block` 供「问一句但继续做别的部分」的情形。\n- `ai/skills/board-card.md`：写清楚 `blocked` 的进出条件——什么时候进、谁能推出来、\n  人回答之后 agent 自己推回 `implementing`。\n- `tools/kanban/test.sh`：补断言。\n\n## 非目标\n- 不让 `blocker` 类型的留言自动推 blocked。blocker 是「记一笔」，ask 才是「停下来等」。\n- 不做服务端强制（不禁止 stage 从 blocked 直接跳别处）。同 DASH-028 的理由。\n- 不改 `dependsOn` 的阻断逻辑——它已经在服务端硬拦，是另一回事。\n- 不动 `cli.mjs open` 的判定。\n\n## 情境包\n- `cli.mjs` 的 `ask`（约 `async ask({ positional, flags })`）、`stage`（`:201`）、\n  `addComment` 与 `viaHttp` 回退逻辑。\n- `ai/process/kanban.md:19-25` 车道表：blocked 的离场条件已写「阻塞原因消失；\n  卡片上人写的提问已被回答」，本卡只是把它接到代码和 agent 协议上。\n- `ai/skills/board-card.md` 的「遇到决策没涵盖的分歧」一节已经在讲 ask，\n  blocked 的说明接在那里最顺。\n\n## 验收标准\n- `cli.mjs ask <ID> --text \"...\"` 之后卡片 stage 变成 `blocked`。\n- 卡片已是 `blocked` 或 `done` 时不重复推、不报错。\n- `--no-block` 能保持原 stage。\n- server 关着时（文件回退路径）行为一致。\n- `board-card.md` 写明进出条件。\n\n## 验证契约\n- `npm test`（补的断言要覆盖 ask→blocked、幂等、--no-block、文件回退）\n- `bash scripts/check-governance.sh`",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-08-08",
+  "updatedAt": "2026-08-08T11:55:28+07:00",
+  "rev": 7,
+  "epic": "人机决策通道",
+  "userStory": "agent 读写通道",
+  "track": "n/a",
+  "dependsOn": [],
+  "order": 2,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "编辑 tools/kanban/cli.mjs：把 stage 的推进逻辑抽成 setStage()（ask 也要用）；ask 成功后推 blocked；新增 --no-block；新增 BOOL_FLAGS 让布尔 flag 不吃掉后面的位置参数；更新 --help 与文件头用法",
+      "编辑 ai/skills/board-card.md：在「遇到决策没涵盖的分歧」下新增「blocked 车道：等人的卡要看得出来在等人」，写明进/出/例外三件事",
+      "编辑 tools/kanban/test.sh：新增 6 条断言",
+      "node --check tools/kanban/cli.mjs → 语法 OK",
+      "npm test → card-store 单元 93/0；HTTP 集成 79/0（原 73，本卡 +6）",
+      "bash scripts/check-governance.sh → governance kit check passed",
+      "真实演练：`cli.mjs stage DASH-034 implementing` 后 `cli.mjs ask DASH-034 --text \"...\"`，输出「DASH-034 implementing → blocked（rev 5）：这张卡在等人回答，不再占着 implementing 的名额」",
+      "浏览器确认：Blocked 车道首次出现卡片（DASH-034），卡面带「💬 1 需要你回复」徽章；Ready 0、Implementing 1/3、Verify 1/5"
+    ],
+    "findings": [
+      "`ADVANCED_STAGES = [ready, implementing, verify, done]` 不含 `blocked`（card-store.mjs:48），所以 `checkDependsOn` 不会挡住往 blocked 走——依赖未完成的卡也能正常进 blocked，不需要特例。",
+      "**参数解析原本只有 `VALUE_FLAGS`，没有对称的另一半。** 不在那个集合里的 flag 会把后面的 token 当成自己的值吃掉：`cli.mjs show --json DASH-001` 会把卡号吃进 --json，然后报「用法：cli.mjs show <ID>」——错在参数顺序，报出来的却是用法错误，很难看懂。加 `--no-block` 时顺手补了 `BOOL_FLAGS = {json, no-block}`。**其中 `json` 超出本卡范围**（本卡讲的是 ask），但它是同一行、同一 bug 类的修复，留着就是留一个已知的坑，故一并修掉并在此说明。",
+      "在 `done` 的卡上提问不回退 stage：那是「事后追问」，把已完成的卡拖回未完成状态是错的记账。问题仍留在卡上等人回答，`cli.mjs open` 也照样列得出来。",
+      "`blocker` 留言与 `ask` 的界线写进了文档，判据是**你会不会停下来**：会停 → `ask`（进 blocked）；只是记一笔、活还能继续 → `comment --kind blocker` 或 `ask --no-block`。没有这条判据的话，两个入口看起来可以互换。",
+      "`ask` 幂等：已经是 blocked 就不重复推，退出码仍是 0。agent 在同一张卡上连问两个问题是常态，第二次不该报错。"
+    ],
+    "residual": "① 从 blocked 出来靠 agent 自己推回（`ack` 之后 `stage <ID> implementing`），没有机械强制。**不用跟**：同 DASH-028/031，用户已明确否决服务端强制这一类做法；且卡面有「N 需要你回复」徽章、`cli.mjs open` 也列得出来，不遵守是看得见的。\n\n② `ask` 推 blocked 时不记录「原来在哪个车道」，所以 agent 推回去要自己判断推去哪。**不用跟**：agent 手上就有上下文。记 `previousStage` 要改 schema，四个项目 100+ 张卡要迁移，性价比不足（同 DASH-028 对 gatesMeta 的判断）。重新评估的触发条件：实际出现过推错车道。\n\n③ 人可以在界面上把卡从 blocked 拖走，此时那条 question 仍是 open。**不用跟**：卡面的「N 需要你回复」徽章不会因为换车道而消失，信息没丢。\n\n④ `--no-block` 用不用由 agent 自己判断。**不用跟**：文档给了明确判据（会不会停下来），且默认值（推 blocked）是保守的那一边——多进一次 blocked 只是多一次人工推回，漏进 blocked 才会让卡在 implementing 里假装在做。"
+  },
+  "comments": [
+    {
+      "id": "c-20260808T111527-efe8",
+      "at": "2026-08-08T11:15:27+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T11:15:27+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户本轮说「A和B需要做」，B 即本卡（blocked 车道接上）。据此勾 gates.product 与 readiness.human_approval_recorded，授权范围仅限本卡。"
+    },
+    {
+      "id": "c-20260808T113549-dfb4",
+      "at": "2026-08-08T11:35:49+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T11:35:49+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "关卡勾选留痕：test 与 code_review 自行勾。low + n/a 的必需关卡是 product / test / code_review 三项，现已齐（product 在开卡时依「A和B需要做」的授权勾过）。\n\n范围外的一处修改已在 evidence.findings 第二条说明：参数解析补 BOOL_FLAGS 时把 json 一并纳入，它和 --no-block 是同一行、同一 bug 类。"
+    },
+    {
+      "id": "c-20260808T115527-1933",
+      "at": "2026-08-08T11:55:27+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T11:55:27+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收：用户本轮明确「我已经批准032，033」。low+n/a 的必需关卡 product/test/code_review 已齐。"
+    }
+  ]
+}

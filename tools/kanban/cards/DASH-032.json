@@ -1,0 +1,118 @@
+{
+  "id": "DASH-032",
+  "title": "看板界面自动刷新：agent 动了卡，人的屏幕上要看得见",
+  "content": "## 目标\nagent 推进卡片状态时，人打开着的看板要能自己更新，不必手动 F5。\n\n## 背景\n用户问「我好像没有看到任何卡片在 Agent 操作下出现过」。查下来主因不是车道逻辑，\n是**界面完全不自动刷新**：`index.html` 全文只有一处 `fetch`，没有 `setInterval`、\n没有 `EventSource`、没有 `visibilitychange`，也没有刷新按钮。载入那一刻抓一次数据，\n之后 agent 怎么动卡都不反映到屏幕上。\n\n而卡片确实是走过那些车道的——本轮三张卡在 `implementing` 分别待了约 15 / 12 / 4.5 分钟。\n人看不见，等于这块「人 ↔ AI 决策通道」在协作过程中是张静态截图。\n\n## 范围\n`tools/kanban/index.html`：\n- 轮询 `loadAll()`，数据有变才 `renderAll()`（无变化不重绘，避免闪烁与滚动位置跳动）\n- **不得打断人正在做的事**：弹窗开着（`openId !== null`）、或正在拖拽时跳过这一轮\n- 标签页不可见时不轮询（`document.hidden`），切回来立刻同步一次\n- 顶部加「上次同步 hh:mm:ss」与手动刷新按钮\n\n## 非目标\n- 不做 SSE / WebSocket。本地单人看板，轮询足够，且 server 是零依赖的 `node:http`，\n  加长连接会让它复杂一个量级。\n- 不改任何写入路径、不动乐观锁（409 的既有处理保持原样）。\n- 不做 mockup 变体：这是既有界面加一个刷新按钮 + 后台行为，属\n  `ai/skills/project-kickoff.md:131` 说的「既有功能的小调整可跳过 mockup」。\n  **但 `ui` 关卡仍交给人勾**——若你认为该出变体，我再补。\n\n## 情境包\n- `index.html:527` `loadAll()`（四个 api 并行）、`:725` `renderAll()`、`:1267` 启动调用。\n- `index.html:370` `openId`；`:977/:984` 弹窗开关；`:1052/:1061` dragstart / dragend。\n- `index.html:126` `.topbar-row1` 是放刷新控件的位置（已 flex + space-between）。\n- `index.html:366` `WIP_CAPS`。\n- 设计 token 一律取自 `ai/context/design-system.md` 与 `index.html` 既有 CSS 变量，\n  不新造颜色/间距。\n\n## 验收标准\n- agent 在别处改卡后，开着的看板在一个轮询周期内自己更新。\n- 弹窗开着时不刷新（不会把正在编辑的内容刷掉）；关掉后恢复。\n- 拖拽过程中不刷新。\n- 标签页切走不轮询，切回立刻同步。\n- 数据没变化时不重绘（滚动位置与展开状态不跳）。\n- 手动刷新按钮可用，旁边显示上次同步时间。\n\n## 验证契约\n- `npm test`\n- 起 server，用 `cli.mjs stage` 在另一个终端改卡，肉眼确认界面自动更新\n- 弹窗开着 / 拖拽中 / 切走标签页三种情况各验一次\n- `bash scripts/check-governance.sh`",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-08-08",
+  "updatedAt": "2026-08-08T11:55:27+07:00",
+  "rev": 11,
+  "epic": "看板可用性",
+  "userStory": "字段可编辑",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": true,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "编辑 tools/kanban/index.html：顶栏加 .topbar-actions / .sync 控件；结尾加自动同步（POLL_MS=4000、syncPausedReason、snapshot、renderSyncStatus、syncNow、visibilitychange）；dragend 补 dragId = null",
+      "node --check（从 index.html 抽出 <script> 段）→ JS 语法 OK",
+      "npm test → card-store 单元 93/0；HTTP 集成 73/0",
+      "bash scripts/check-governance.sh → governance kit check passed",
+      "浏览器实测（Chrome，127.0.0.1:4430）：顶栏渲染出绿点 + 「已同步 hh:mm:ss」+ 「立即同步」，位于看板/蓝图分页左侧",
+      "自动更新：11:22:50 用 `cli.mjs stage DASH-033 implementing` 改卡，界面在**无任何手动操作**下把该卡从 Ready 挪到 Implementing（读 DOM 确认，非截图目测）",
+      "手动路径：点「立即同步」→ 车道 DOM 立即反映最新数据，同步时间戳更新",
+      "暂停三态各实测一次：弹窗开着 →「已暂停 · 卡片详情开着」且弹窗内容完好；标签页在后台 →「已暂停 · 标签页在后台」；拖拽中 →「已暂停 · 正在拖拽」",
+      "放弃的拖拽（只发 dragend 不发 drop）之后同步恢复正常（「已同步 11:27:46」）",
+      "不重绘实测：给 DASH-032 的卡片 DOM 节点打 data-probe=sentinel，经过多轮同步（时间戳从 11:23:48 走到 11:25:46）后节点仍是同一个对象、标记还在",
+      "失败路径实测（server 被停掉后点「立即同步」）：状态位变红点 +「同步失败，server 还在吗」，**没有弹 toast**，已渲染的 12 张卡片原样留着——不会因为一次请求失败就把界面清空"
+    ],
+    "findings": [
+      "**本会话的 `grep` 是 shell 快照里的一个函数，在 index.html 上会静默返回空。** 我用它验证自己刚加的 markup，得到「没找到」，差点误判成编辑没生效。`/usr/bin/grep` 正常（4 行命中）。已用 /usr/bin/grep 重跑改动前的诊断：setInterval / EventSource / visibilitychange / poll / location.reload 在旧版 index.html 中全为 0，原始结论成立。**后续所有验证一律走 /usr/bin/grep。**",
+      "**dragend 原本不清 dragId**，只有 drop 清（index.html:1087）。拖到空白处松手的「放弃拖拽」不触发 drop，dragId 就永久留着——单看旧代码只是个无害的悬挂变量，但自动同步拿 dragId 当「人正在拖」的判据之后，一次放弃的拖拽会让同步永久停摆。已在 dragend 补 dragId = null，并实测验证恢复。",
+      "**Chrome 会节流后台标签页的 setInterval**（实测约 1 分钟一次，而非 4 秒）。这不影响设计：代码本来就在 document.hidden 时跳过同步，切回前台由 visibilitychange 立刻补一次。也因此自动化环境里没法按 4 秒节奏观察，改用「读 DOM 确认卡片确实自己挪了」来验证。",
+      "只在数据真的变了才 renderAll：每 4 秒无条件重绘会让滚动位置和展开状态每 4 秒跳一次，完全没法用。用整串 JSON 快照比对——几十张卡的量级下，序列化成本远低于一次无谓的重绘。",
+      "轮询失败不弹 toast：server 一重启就是连续几十次失败，toast 会把界面刷满。改成标在状态位上（红点 +「同步失败，server 还在吗」）。",
+      "颜色全部取自既有 token（--good / --crit / --ink-faint / --surface-sunken），没有新造。一开始误写了不存在的 --ok，查 index.html:28 发现实际叫 --good，已改——新代码引一个不存在的 token 在深色模式下会静默变透明。"
+    ],
+    "residual": "① **`ui` 关卡没勾，等人。** 本卡 track=frontend，ui 是人的关卡。我按 `ai/skills/project-kickoff.md:131`「既有功能的小调整可跳过 mockup」判定不出 2-3 个变体——可见改动只有顶栏一个按钮和一行同步时间，其余全是后台行为。**要有人跟**：你勾 ui 关卡，或说一声我补变体。已列进本轮收尾 Todo。\n\n② 轮询固定 4 秒，没做成可配置。**不用跟**：本地看板、几十张卡的量级，且只在「前台 + 无弹窗 + 无拖拽」时才发请求。重新评估的触发条件：卡片涨到几百张，或实际感到卡顿。\n\n③ 后台标签页被 Chrome 节流到约 1 分钟一次。**不用跟**：代码在 hidden 时本来就跳过同步，切回前台由 visibilitychange 立刻补一次，实际行为没有损失。\n\n④ 两个人同时开着同一块看板时，A 的改动会在 B 那边 4 秒后出现；同时改同一张卡仍由既有的 409 乐观锁处理，本卡没有碰那条路径。**不用跟**。\n\n⑤ 数据有变化时没有任何视觉提示（新卡不淡入、不高亮）。**不用跟**：会引入动画和注意力争夺，目前没有需求。要做另立卡。\n\n⑥ 弹窗开着时同步暂停，所以人在读一张卡的详情期间，看板其余部分是停住的。**不用跟**：这是刻意的取舍——把人正在编辑的内容刷掉，比晚几秒看到别处的改动糟糕得多；状态位会写明「已暂停 · 卡片详情开着」，不是无声停摆。"
+  },
+  "comments": [
+    {
+      "id": "c-20260808T111527-5632",
+      "at": "2026-08-08T11:15:27+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T11:15:27+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户本轮说「A和B需要做」，A 即本卡（界面自动刷新）。据此勾 gates.product 与 readiness.human_approval_recorded，授权范围仅限本卡。\n\n**ui 关卡不勾。** 本卡 track=frontend，ui 是人的关卡。我按 ai/skills/project-kickoff.md:131「既有功能的小调整可跳过 mockup」判定不出 2-3 个变体——可见改动只是顶部多一个刷新按钮和一行同步时间，其余是后台行为。这个判定是我做的，若你认为该出变体，说一声我补。"
+    },
+    {
+      "id": "c-20260808T112112-2642",
+      "at": "2026-08-08T11:21:12+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-08-08T11:21:12+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "浏览器验证：在 Chrome 打开 127.0.0.1:4430，顶栏出现同步控件（绿点 + 已同步 hh:mm:ss + 立即同步按钮），位置在看板/蓝图分页左侧。这条留言本身就是自动刷新的测试触发源——写入时界面开着且没有弹窗，应当在一个轮询周期（4 秒）内自己出现在 DASH-032 的卡面上。"
+    },
+    {
+      "id": "c-20260808T112918-2c2f",
+      "at": "2026-08-08T11:29:18+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T11:29:18+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "关卡勾选留痕：test 与 code_review 自行勾。**ui 不勾**——track=frontend 时 ui 是人的关卡，我只做了「不出 mockup 变体」的判定（依据 project-kickoff.md:131 的小调整例外），批准与否是你的。product 在开卡时依「A和B需要做」的授权勾过。\n\nmedium + frontend 的必需关卡是 product / ui / test / code_review 四项，现在 3/4，缺 ui。"
+    },
+    {
+      "id": "c-20260808T115527-58d5",
+      "at": "2026-08-08T11:55:27+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T11:55:27+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收：用户本轮明确「我已经批准032，033」。ui 关卡由用户批准（即认可「这是既有功能的小调整、不出 mockup 变体」的判定）。medium+frontend 的必需关卡 product/ui/test/code_review 已齐。"
+    }
+  ]
+}

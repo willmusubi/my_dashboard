@@ -1,0 +1,100 @@
+{
+  "id": "DASH-031",
+  "title": "立约定：收尾必须列出人要做的 Todo，并分「阻塞 / 可选」两档",
+  "content": "## 目标\n把「收尾时列出人要做的 Todo」从一次口头要求，变成随 kit 分发、约束所有 agent 的约定。\n\n## 背景\n用户 2026-08-07：「每次执行任务后，要把人类用户（我）需要的 Todo list 列出来到最后。\n这样我觉得不重要的可以直接批准，不会卡项目进度。」\n\n这条要求指向一个真实的结构性问题：本项目的治理流程有大量人工关卡\n（`ai/process/review-gates.md`），agent 经常停在「等人拍板」。但**等什么、急不急、\n不做会怎样**，此前散在长回复正文里，人要通读才能拼出自己该做什么，于是项目卡在等待上。\n关卡设计的本意是「该停的地方停下」，不是「停下之后人也不知道要干嘛」。\n\n现状：这条约定只存在于会话记忆里，只约束一个 agent、一个项目。仓库里\n`grep -n \"Todo\"` 在 AGENTS.md / ai/process/ / ai/skills/ 中零命中。\n\n## 范围\n- `AGENTS.md` 的「操作规则」：加一条，说明收尾必须列人类 Todo 并分档。\n  这个文件每轮会话都会载入，是唯一能保证被读到的地方。\n- `ai/skills/board-card.md`：加一节写清楚怎么分档、每条要写什么、没有时怎么办，\n  并给出可照抄的形状。\n\n## 非目标\n- **不改 `ai/process/definition-of-done.md`。** 它管的是卡片 `evidence` 里要留什么，\n  是给三个月后的人看的审计轨迹；本卡管的是**当下这一轮回复末尾**给人的行动清单，\n  两者读者和时机都不同。DoD 的 `residual`「要有人跟」是来源之一，会在新一节里引用它，\n  但不把 Todo 清单塞进 DoD。\n- 不加 schema 字段、不改 `card-store.mjs`。同 DASH-028 的理由：要迁移四个项目\n  100+ 张卡，而这是回复格式约定，本来就不该进卡片数据。\n- 不改 `CLAUDE.md`。这条约束所有 agent，属于 AGENTS.md 的范畴。\n- 不做机械强制。和 DASH-028 一样是纯约定，理由写进文档里。\n\n## 情境包\n- `AGENTS.md:6-20`「操作规则」，最后一条是「提供验证证据……没有证据不算完成」，\n  新规则接在它后面语义连贯（都在讲交付时要给出什么）。\n- `ai/skills/board-card.md`：已有「人工关卡：勾了就必须留下授权来源」一节（60-84 行）\n  是同类约定的写法范本——先讲规则，再讲**为什么非做不可**，再给可照抄的例子。\n- `ai/process/definition-of-done.md:22-39`：`residual` 的「要有人跟 / 不用跟」分野，\n  是 Todo 清单「阻塞」栏的来源之一。\n- `ai/process/kanban.md:66-84`：gates 的归属表，说明哪几关天然属于人——\n  这是「阻塞」栏最常见的内容。\n- 不得触碰：`tools/` 下任何代码。\n\n## 验收标准\n- `AGENTS.md` 的「操作规则」里有这条，且指向 board-card.md 的细则。\n- `board-card.md` 新一节写明：分「阻塞」与「可选」两档；每条要说清楚做什么、\n  不做会怎样；**没有需要人做的事时一句话带过，不许硬凑**。\n- 写出「为什么」——只写规则不写理由，下一个 agent 没有遵守的动机（DASH-028 的教训）。\n- 给出可照抄的形状。\n- `npm test` 与 `bash scripts/check-governance.sh` 仍全绿。\n\n## 验证契约\n- `npm test`\n- `bash scripts/check-governance.sh`\n- `bash scripts/upgrade-all.sh --dry-run` 确认两个文件会作为 kit 内容分发出去",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-08-07",
+  "updatedAt": "2026-08-08T11:13:01+07:00",
+  "rev": 7,
+  "epic": "人机决策通道",
+  "userStory": "agent 读写通道",
+  "track": "n/a",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "编辑 AGENTS.md：「操作规则」末尾新增一条，接在「没有证据不算完成」之后（同属交付时要给出什么）",
+      "编辑 ai/skills/board-card.md：新增「收尾：把球明确地传回给人」一节，位于「干活中」之后、「不要删卡」之前",
+      "npm test → card-store 单元 93/0；HTTP 集成 73/0",
+      "bash scripts/check-governance.sh → governance kit check passed",
+      "bash scripts/upgrade-all.sh --dry-run → 三个目标均为「覆盖（已备份）ai/skills/board-card.md」+「保留目标版本 AGENTS.md」",
+      "grep 逐条核对验收标准：AGENTS.md 有该条且指向 board-card.md；board-card.md 含阻塞/可选分档、「不要硬凑」、「为什么非列不可」、可照抄形状"
+    ],
+    "findings": [
+      "**AGENTS.md 是 project-owned，这条规则不会传给已装的三个项目。** install-into-project.sh:331 的 keep 列表里有 AGENTS.md（「目标已有就永不碰」），所以 upgrade-all 只推 board-card.md。开卡时的背景写「写进文件才会随 kit 分发到所有项目」——只对了一半：全新安装会拿到完整版，MT / real_rpg / TKT 三个已装项目只会拿到 board-card.md 那半边。而 AGENTS.md 才是每轮会话都载入的那个文件。",
+      "分档用「阻塞 / 可选」而不是「重要 / 次要」：判据是**不做走不走得下去**，不是重要性。重要但不阻塞的事（例如残留风险的后续跟进）该在卡上有归宿，不该每轮往人脸上推——那正是 definition-of-done.md 里「不用跟」应该沉在卡里的那一类。",
+      "明确写了「没有需要人做的事时一句话带过，不要硬凑」。这条比规则本身更容易被忽略，而硬凑的后果是人开始跳过整份清单，真正阻塞的那条跟着一起被跳过——清单反而比没有更糟。",
+      "写法沿用 DASH-028「人工关卡：勾了就必须留下授权来源」那一节的范本：先规则、再「为什么非做不可」、再可照抄的例子。只写规则不写理由，下一个 agent 没有遵守的动机。",
+      "没有改 definition-of-done.md：它管卡片 evidence 里留什么（给三个月后的人看的审计轨迹），本卡管当下这一轮回复末尾给人的行动清单，读者与时机都不同。新一节引用了它的 residual「要有人跟」作为「阻塞」栏的来源之一。"
+    ],
+    "residual": "① **AGENTS.md 的那条规则不会传播到 MT / real_rpg / TKT**（见 findings 第一条）。**要有人跟**：需要人决定走哪条——(a) 手工给三个项目的 AGENTS.md 各补那一行；(b) 另开卡，让安装脚本在「AGENTS.md 已存在」时把 kit 版本比目标版本多出来的规则列出来提示（而不是覆盖）。已列进本轮收尾的 Todo 交给人选。\n\n② 纯约定，没有机械强制力——agent 不照做时没有任何东西会拦住它。**不用跟**：同 DASH-028，用户已明确否决服务端强制这一类做法；何况这是回复格式，服务端本来也管不到。重新评估的触发条件：实际发生过几次「该列没列」。\n\n③ **顺带发现、不属于本卡**：全新安装会把分发源的 `tools/kanban/epics.json` 原样种进目标——`real_rpg` 现在装着 my_dashboard 自己的四个 Epic（看板可用性 / 人机决策通道 / 简体化与文档 / 分发能力）。MT 与 TKT 因为各自做过 kickoff / 迁移已经换掉了，只有还没 kickoff 的 real_rpg 留着。`cards/` 已经是「只建空骨架」的做法，`epics.json` 应当一致。**要有人跟**：另开一张卡。已列进本轮收尾 Todo。\n\n④ 同批 `keep` 的 `ai/context/*.md` 也会种过去，但已核对分发源那几份都是「状态：模板占位符」，种过去无害。**不用跟**：重新评估的触发条件是分发源哪天往 ai/context 里写了真实内容。"
+  },
+  "comments": [
+    {
+      "id": "c-20260807T234557-8b34",
+      "at": "2026-08-07T23:45:57+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-07T23:45:57+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户本轮说「执行2」，指的是我上一轮收尾 Todo 里的第 2 条——「把『收尾列人类 Todo』固化进 AGENTS.md + ai/skills/board-card.md」。据此勾 gates.product 与 readiness.human_approval_recorded，授权范围仅限本卡。\n\n原始要求（2026-08-07）：「每次执行任务后，要把人类用户（我）需要的 Todo list 列出来到最后。这样我觉得不重要的可以直接批准，不会卡项目进度。」"
+    },
+    {
+      "id": "c-20260807T235025-5648",
+      "at": "2026-08-07T23:50:25+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-07T23:50:25+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "关卡勾选留痕：test 与 code_review 自行勾。low + n/a track 的必需关卡是 product / test / code_review 三项，现已齐（product 在开卡时依用户「执行2」的授权勾过）。\n\n范围内的两个发现需要人定，已写进 evidence.residual ①③，并列进本轮收尾 Todo：AGENTS.md 是 project-owned 所以新规则传不到已装的三个项目；以及全新安装会把分发源的 epics.json 原样种进目标。"
+    },
+    {
+      "id": "c-20260808T111301-1768",
+      "at": "2026-08-08T11:13:01+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T11:13:01+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收：用户本轮明确「031已经验收了」。low + n/a 的必需关卡 product / test / code_review 已齐。据此推 done。"
+    }
+  ]
+}

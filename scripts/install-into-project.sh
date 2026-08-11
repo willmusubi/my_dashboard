@@ -127,15 +127,56 @@ refresh() {     # $1 = 相对路径，文件或目录
 }
 
 # project-owned：目标已有就永不碰。
-keep() {        # $1 = 相对路径
+#
+# 这份名单里其实混着两类东西，需要的行为相反——分清楚才不会犯下面两种相反的错：
+#
+#   ① 内容是 kit 的，项目可能在上面追加
+#      （CLAUDE.md / AGENTS.md / .claude/settings.json）
+#      kit 这边有真内容要给。不覆盖是对的（人可能加了自己的规则），但光是不覆盖
+#      还不够：kit 更新了规则，目标**永远拿不到而且无声无息**。所以要 `keep <p> drift`
+#      ——照旧不碰一个字节，但把「kit 有、你没有」的行报出来让人自己判断。
+#
+#   ② 内容天生属于项目，kit 只该给空骨架或模板
+#      （ai/context / ai/artifacts / epics.json / cards/ / config.json）
+#      这一类**不能**报漂移——目标的内容跟 kit 的本来就该不一样，报了全是噪音。
+#
+# 两类混为一谈的后果实测过：epics.json 属②却被当①（复制了分发源的 4 个 Epic 过去），
+# AGENTS.md 属①却被当②（碰都不碰也不报告，DASH-031 加的规则就这么丢了）。
+keep() {        # $1 = 相对路径；$2 = "drift" 时对已存在的文件报告 kit 版多出来的行
   local from="$SRC/$1" to="$TARGET/$1"
   [[ -e "$from" ]] || return 0
   if [[ -e "$to" ]]; then
-    say "  保留目标版本  $1"; N_SKIP+=1; return 0
+    say "  保留目标版本  $1"; N_SKIP+=1
+    [[ "${2:-}" == "drift" ]] && report_drift "$1"
+    return 0
   fi
   say "  新建          $1"; N_NEW+=1
   run "mkdir -p \"$(dirname "$to")\""
   run "cp -R \"$from\" \"$to\""
+}
+
+# 报告「kit 版有、目标版没有」的行。**只读，不改任何东西。**
+# 只报这一个方向：目标自己加进去的行是它的权利，不是漂移，报出来只会淹没真信号。
+report_drift() {  # $1 = 相对路径（文件）
+  local from="$SRC/$1" to="$TARGET/$1"
+  [[ -f "$from" && -f "$to" ]] || return 0
+  cmp -s "$from" "$to" && return 0
+
+  # diff A B：`>` 是「只在 B 里有」。这里 B 是 kit 版，所以 `>` 就是目标缺的那些行。
+  local missing n
+  missing="$(diff "$to" "$from" | sed -n 's/^> //p' | sed '/^[[:space:]]*$/d')"
+  n="$(printf '%s\n' "$missing" | grep -c . || true)"
+  [[ "$n" -gt 0 ]] || return 0
+
+  say "     ⚠️  kit 版有 ${n} 行是目标版没有的——**不会自动合并，要不要采用由你决定**："
+  if [[ "$n" -le 8 ]]; then
+    printf '%s\n' "$missing" | sed 's/^/          /'
+  else
+    printf '%s\n' "$missing" | head -6 | sed 's/^/          /'
+    say "          …还有 $((n - 6)) 行"
+  fi
+  say "     完整差异：diff \"$to\" \"$from\""
+  say "     注：目标可能是**刻意**改写过的（例如把 npm test 改成 kanban:test），照抄前先看清楚。"
 }
 
 derive_prefix() {   # $1 = 目录名 → 首字母缩写。推不出来时输出空串。
@@ -327,11 +368,13 @@ do refresh "$p"; done
 
 say ""
 say "project-owned（目标已有就不碰）："
-for p in \
-  CLAUDE.md AGENTS.md \
-  ai/context ai/artifacts \
-  tools/kanban/epics.json \
-  .claude/settings.json
+# ① kit 有正本、项目可能追加 → 不覆盖，但报告 kit 版多出来的行
+for p in CLAUDE.md AGENTS.md .claude/settings.json
+do keep "$p" drift; done
+# ② 内容天生属于项目 → 不覆盖，也不报漂移（内容本来就该不一样）
+# 注意 ai/context 与 ai/artifacts 是**模板占位符**（「状态：模板占位符」＋写法说明），
+# 所以 cp 过去给的是空表格而不是内容，这才符合上面②的定义。
+for p in ai/context ai/artifacts
 do keep "$p"; done
 
 # 卡片目录只建骨架，绝不复制本仓库的卡片过去。
@@ -340,6 +383,23 @@ if [[ ! -d "$TARGET/tools/kanban/cards" ]]; then
   run "mkdir -p \"$TARGET/tools/kanban/cards\" && touch \"$TARGET/tools/kanban/cards/.gitkeep\""
 else
   say "  保留目标版本  tools/kanban/cards/（$(ls "$TARGET"/tools/kanban/cards/*.json 2>/dev/null | wc -l | tr -d ' ') 张卡）"; N_SKIP+=1
+fi
+
+# epics.json 同理：它是那个项目的 Epic 结构，和 cards/ 一样属于②，kit 不该有内容。
+# 早先它在 keep 名单里，于是 cp 过去的是**分发源自己的 Epic**——real_rpg 装完就带着
+# my_dashboard 的「看板可用性 / 人机决策通道 / 简体化与文档 / 分发能力」四个 Epic，
+# 蓝图分页和完成度全是错的。侥幸没留下后果，只因为它 kickoff 时整个替换掉了；
+# project-kickoff 步骤 3 只说「写进 epics[]」，agent 用追加的话污染就永久留下。
+EPICSF="$TARGET/tools/kanban/epics.json"
+if [[ ! -e "$EPICSF" ]]; then
+  say "  新建          tools/kanban/epics.json（空）"; N_NEW+=1
+  run "mkdir -p \"$(dirname "$EPICSF")\" && printf '%s\\n' '{ \"epics\": [] }' > \"$EPICSF\""
+else
+  say "  保留目标版本  tools/kanban/epics.json（$(python3 -c "
+import json,sys
+try: print(len(json.load(open(sys.argv[1])).get('epics', [])))
+except Exception: print('?')
+" "$EPICSF" 2>/dev/null) 个 Epic）"; N_SKIP+=1
 fi
 
 # 卡片 id 前缀与端口。**必须写成文件而不是环境变量**：hook 由 Claude Code 启动，

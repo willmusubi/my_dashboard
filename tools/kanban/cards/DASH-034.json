@@ -1,0 +1,142 @@
+{
+  "id": "DASH-034",
+  "title": "project-owned 文档漂移检测：kit 更新了规则，已装项目要能知道",
+  "content": "## 目标\nkit 的 `AGENTS.md` / `CLAUDE.md` 更新了规则时，已装项目要被告知，而不是无声错过。\n\n## 背景\nDASH-031 往 `AGENTS.md` 加了一条规则，然后发现它**传不出去**：\n`install-into-project.sh` 的 `keep` 列表里有 `AGENTS.md`（「目标已有就永不碰」），\n所以 `upgrade-all` 只推了 `ai/skills/board-card.md` 那半边。而 `AGENTS.md` 才是\n每轮会话都载入的那个文件。\n\n查了三个目标的实际漂移，结论出人意料——**AGENTS.md 根本没被定制过**：\n\n| 项目 | 相对 kit 版 |\n|---|---|\n| medical_tourism | 逐字节相同 |\n| real_rpg | 逐字节相同 |\n| three_kingdoms_traveler | 只差 2 行 |\n\nTKT 那 2 行是「fork 来源说明」和「`npm run kanban:test` 而非 `npm test`」——\n**都是安装脚本自己就该写对的机械适配，不是人写的规则**。\n\n所以不改归属（保持 project-owned、永不覆盖是对的，人确实可能往里加东西），\n改成**检测并报告**：目标版本缺了 kit 版有的哪几行，列出来让人自己决定。\n\n## 范围\n- `scripts/install-into-project.sh`：project-owned 的 `AGENTS.md` / `CLAUDE.md` 已存在时，\n  比对 kit 版本，列出「kit 有、目标没有」的行；行数少就直接印出来，多就给 diff 命令。\n  只报告，**绝不自动合并、绝不覆盖**。\n- 顺手把 DASH-031 那条规则补进三个已装项目的 `AGENTS.md`（经查零定制/仅机械差异，风险为零）。\n- `tools/kanban/test.sh`：补断言。\n\n## 非目标\n- 不把 `AGENTS.md` 改成 kit-owned。项目往里加自有规则是正当的，覆盖掉（哪怕有备份）\n  就是静默毁掉人写的东西——这正是本 fork 相对上游修掉的那一类问题。\n- 不做自动合并。散文的自动合并不可靠，出错时人也看不出来。\n- 不检测 `ai/context/` 与 `ai/artifacts/`：那两个本来就该是项目自己的内容，不是 kit 规则。\n- 不改 TKT 那 2 行机械适配（那是它对的样子，不是漂移）。\n\n## 情境包\n- `install-into-project.sh` 的 `keep()`（约 `:130`）与 project-owned 列表（约 `:330`）。\n- 已有的 `refresh_file()` 用 `cmp -s` 判同，报告风格「相同，跳过 / 覆盖（已备份）/ 保留项目自有」\n  是现成的措辞范本，新报告要和它一致。\n- `upgrade-all.sh` 逐个调用 installer，新报告会自动出现在批量升级的输出里。\n- 不得触碰：`tools/kanban/` 下的代码。\n\n## 验收标准\n- 目标的 `AGENTS.md` 与 kit 版不同时，安装/升级输出里列出缺少的行。\n- 完全相同时不输出噪音。\n- 目标有自己加的行时**不报告**为问题（只报 kit 有而目标没有的方向）。\n- 全程零覆盖：`AGENTS.md` / `CLAUDE.md` 一个字节都不改。\n- 三个已装项目的 `AGENTS.md` 补上 DASH-031 那条规则。\n\n## 验证契约\n- `npm test`\n- `bash scripts/upgrade-all.sh --dry-run` 看报告是否出现且措辞一致\n- 补完之后再跑一次 `--dry-run`，确认报告消失\n- `bash scripts/check-governance.sh`",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "claude-code",
+  "approvalRequired": true,
+  "createdAt": "2026-08-08",
+  "updatedAt": "2026-08-08T19:52:17+07:00",
+  "rev": 12,
+  "epic": "分发能力",
+  "userStory": "安全分发",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 3,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "编辑 scripts/install-into-project.sh：keep() 加第二参数 drift；新增 report_drift()（只读，diff 取「只在 kit 版里有」的行）；project-owned 列表拆成两个循环——①CLAUDE.md/AGENTS.md/.claude/settings.json 报漂移，②ai/context/ai/artifacts/epics.json 不报",
+      "编辑 README.md：「分发到其他项目」补上两类 project-owned 的对照表与理由",
+      "编辑 tools/kanban/test.sh：新增 6 条断言",
+      "bash -n scripts/install-into-project.sh → 语法 OK",
+      "npm test → card-store 单元 93/0；HTTP 集成 85/0（原 79，本卡 +6）",
+      "bash scripts/check-governance.sh → governance kit check passed",
+      "对三个真实目标跑 upgrade-all --dry-run：三家的 AGENTS.md 全部报出缺 DASH-031 那 3 行；TKT 另报 CLAUDE.md 缺 18 行",
+      "补齐：用一次性脚本把那 3 行插进三个项目的 AGENTS.md（锚点是「提供验证证据」那条，要求锚点恰好出现 1 次，否则拒绝插入）。MT 1657→1784 字节、real_rpg 1657→1784、TKT 1709→1836",
+      "补齐后复跑 upgrade-all --dry-run：MT 与 real_rpg 的 AGENTS.md 漂移报告**消失**；TKT 只剩它那 2 行刻意的机械适配",
+      "核对 TKT 的两处自有适配未被破坏：第 3 行「经 my_dashboard 改造后分发而来」、第 34 行「npm run kanban:test（npm test 是本项目自己的 vitest，别混）」都在",
+      "跑完 distributions.json 只剩 MT / RR / TKT，无测试残留"
+    ],
+    "findings": [
+      "**`keep` 名单混着两类需要相反行为的东西，两个已知 bug 就是这个混淆的两个方向。** ①「kit 有正本、项目可能追加」（AGENTS.md / CLAUDE.md / .claude/settings.json）——不覆盖是对的，但不报告就等于 kit 规则更新永远送不到；②「内容天生属于项目」（ai/context / ai/artifacts / epics.json / cards / config.json）——kit 只该给空骨架，报漂移全是噪音。epics.json 属②却被当①（复制了源内容，DASH-035），AGENTS.md 属①却被当②（碰都不碰也不报告，本卡）。这条判据已写进脚本注释与 README。",
+      "**`.claude/settings.json` 也属第一类，本卡按分析把它纳入了检测范围。** 三个目标目前与 kit 版逐字节相同，所以还没暴露——但 kit 若新增一个 hook，它同样永远送不到已装项目。这是开卡时没想到、分析时才发现的。",
+      "只报 kit → 目标 一个方向。反方向（目标有、kit 没有）是项目自己加的规则，是它的权利，报出来只会淹没真信号。实测断言覆盖了这一点。",
+      "**漂移报告对「刻意改写」有假阳性，这是可接受的取舍。** TKT 把 fork 来源说明和 test 命令改成了适配自己的版本，diff 看来就是「kit 有两行你没有」。做模糊匹配去消除它属于过度设计，改为在报告末尾写明「目标可能是刻意改写过的，照抄前先看清楚」。",
+      "补齐脚本要求锚点在文件里**恰好出现 1 次**，否则拒绝插入并报错退出。插错位置的治理文档比没插更糟——它会以规则的形式待在那里，而没人会去核对它在不在该在的地方。",
+      "TKT 的 CLAUDE.md 缺 kit 版 18 行（整张 skill 路由表）。这是漂移检测第一次跑就抓到的真问题，但**不在本卡范围内**——CLAUDE.md 是 TKT 真正定制过的文件（78 行差异，含带日期的人工决策），合不合、怎么合要人判断。"
+    ],
+    "residual": "① **TKT 的 CLAUDE.md 缺 kit 的整张 skill 路由表（18 行）。** 检测跑出来的真问题。**要有人跟**：需要人看过 diff 后决定合不合——TKT 的 CLAUDE.md 有带日期的人工决策，不能机械合并。已列进本轮收尾 Todo。\n\n② 漂移报告对「目标刻意改写过的行」会假阳性（TKT 的 2 行）。**不用跟**：报告末尾已写明这一点；做模糊匹配去消除属于过度设计，且模糊匹配本身会带来漏报，比假阳性更危险。\n\n③ 只报告、不自动合并，所以人得自己动手粘。**不用跟**：这是刻意的——散文的自动合并不可靠，出错时人也看不出来。重新评估的触发条件：kit 规则更新变得频繁到手工合并成为负担。\n\n④ 漂移检测是逐行比对，对 `.claude/settings.json` 这种 JSON 而言，重排字段就会全文报漂移。**不用跟**：三个目标目前都与 kit 版逐字节相同，且这个文件由 kit 生成、极少手改。真出现了再考虑按 JSON 结构比对。\n\n⑤ 本卡往三个目标项目的 AGENTS.md 里写了字（各 3 行）。**不用跟**：只插不改、锚点唯一才动手、TKT 的自有适配已核对完好；三个项目都是 git 仓库，`git diff` 看得见，不满意 `git checkout` 即可。\n\n⑥ 第二类里的 `epics.json` 仍然会把分发源的内容种进新项目。**要有人跟：DASH-035**（本卡按用户定案不碰它）。"
+  },
+  "comments": [
+    {
+      "id": "c-20260808T111527-5287",
+      "at": "2026-08-08T11:15:27+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T11:15:27+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户本轮说「4你看怎么修」，把修法的决定权交给我。我选的是「保持 project-owned 不覆盖 + 检测报告漂移」，理由写在卡片背景与非目标里：查证发现 AGENTS.md 三个目标里两个零定制、TKT 只差 2 行机械适配，但改成 kit-owned 覆盖会毁掉将来人往里加的东西，那正是本 fork 相对上游修掉的那类问题。据此勾 gates.product 与 readiness.human_approval_recorded。"
+    },
+    {
+      "id": "c-20260808T113418-8961",
+      "at": "2026-08-08T11:34:18+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "question",
+      "status": "done",
+      "statusAt": "2026-08-08T13:02:59+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "本卡的漂移报告要不要也覆盖 tools/kanban/epics.json？它现在也在 keep 列表里，而 DASH-035 已经单独立卡要把它改成只建空骨架。两张卡都动这一处的话会撞车——我倾向本卡只管 AGENTS.md / CLAUDE.md 两个散文文档，epics.json 留给 DASH-035。"
+    },
+    {
+      "id": "c-20260808T115720-5596",
+      "at": "2026-08-08T11:57:20+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T11:57:20+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "分析（回应用户「project owned 部分是跟项目自己有关的文件还是关于看板的文件」）：**两类都有，而且 keep 名单把它们混成了一类，两类需要的行为相反。**\n\n第一类——内容是 kit 的，项目可能追加：AGENTS.md（61 行通用规则）、CLAUDE.md（49 行通用路由）、.claude/settings.json（29 行 hook）。kit 有真内容要给；不覆盖是对的，但更新永远送不到，且无声无息。实测漂移：AGENTS.md 三家里两家零定制、TKT 差 2 行机械适配；CLAUDE.md TKT 差 78 行（真定制）；settings.json 三家全零定制。\n\n第二类——内容天生属于项目，kit 只该给空骨架：ai/context/（实测 6 个文件全是模板占位符与写法说明，种过去无害）、ai/artifacts/（只有惯例说明 README）、cards/（已正确处理成空骨架）、config.json（已正确按参数生成）、**epics.json（36 行 my_dashboard 自己的 4 个 Epic —— 唯一做错的一个）**。\n\n结论：两个 bug 是同一个混淆的两个相反方向。epics.json 是第二类被当第一类（复制了源内容），AGENTS.md 是第一类被当第二类（碰都不碰也不报告）。**据此本卡与 DASH-035 应当拆开**，因为修的是相反的毛病。\n\n新增发现：.claude/settings.json 属于第一类，应纳入本卡的检测范围——三家目前零定制所以没暴露，但 kit 若新增 hook，同样永远送不到已装项目。"
+    },
+    {
+      "id": "c-20260808T130259-2f64",
+      "at": "2026-08-08T13:02:59+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "answer",
+      "status": "done",
+      "statusAt": "2026-08-08T13:02:59+07:00",
+      "re": "c-20260808T113418-8961",
+      "supersedes": [],
+      "text": "记录用户答复（本轮对话原话：「Dash-034，我采用你的建议。请执行。」）——这是 agent 对人的决定的**转述记录**，不是人自己写的留言。\n\n据此定案：\n- 本卡范围 = 第一类（内容是 kit 的、项目可能追加）：AGENTS.md、CLAUDE.md、**.claude/settings.json**（按分析新增），做漂移检测，只报告绝不覆盖。\n- epics.json 属第二类（内容天生属于项目），留给 DASH-035 改成只建空骨架，本卡不碰。"
+    },
+    {
+      "id": "c-20260808T130850-f2f9",
+      "at": "2026-08-08T13:08:50+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T13:08:50+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "关卡勾选留痕：test 与 code_review 自行勾。low + backend 的必需关卡是 product / test / code_review 三项，现已齐（product 在开卡时依用户「4你看怎么修」的授权勾过，范围由用户本轮「我采用你的建议」定案）。\n\n范围相对开卡时有一处扩大并已获授权：按分析把 .claude/settings.json 纳入检测（它与 AGENTS.md 同属第一类），用户答复「采用你的建议」即涵盖此项。"
+    },
+    {
+      "id": "c-20260808T195217-c0b7",
+      "at": "2026-08-08T19:52:17+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-08T19:52:17+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收：用户本轮明确「034，处理完了」。low+backend 的必需关卡 product/test/code_review 已齐。"
+    }
+  ]
+}

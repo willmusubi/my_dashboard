@@ -12,7 +12,7 @@
  *   node tools/kanban/cli.mjs ack     <ID> <留言id>       确认一条人写的决策
  *   node tools/kanban/cli.mjs resolve <ID> <留言id>       标记为已完成
  *   node tools/kanban/cli.mjs comment <ID> --kind progress|evidence|note|blocker --text "..."
- *   node tools/kanban/cli.mjs ask     <ID> --text "..."   提问，然后停下来等人
+ *   node tools/kanban/cli.mjs ask     <ID> --text "..."   提问，把卡推进 blocked 并停下来等人
  *   node tools/kanban/cli.mjs answer  <ID> --re <留言id> --text "..."
  *   node tools/kanban/cli.mjs stage   <ID> <backlog|blocked|ready|implementing|verify|done>
  *
@@ -38,6 +38,10 @@ function die(msg, code = 1) {
 // 这些 flag 一定带值。必须显式列出——否则 `--text "--dry-run 实测…"` 里的值
 // 因为以 `--` 开头，会被当成下一个 flag，留言内容整条丢掉（真踩过）。
 const VALUE_FLAGS = new Set(["kind", "text", "re", "agent"]);
+// 对称的另一半：这些 flag 一定不带值。不列出来的话 `show DASH-001 --json` 没问题，
+// 但 `--json DASH-001` 会把卡号当成 --json 的值吃掉，然后报「用法」——
+// 错在参数顺序，报出来的却是用法错误，很难看懂。
+const BOOL_FLAGS = new Set(["json", "no-block"]);
 
 function parseArgs(argv) {
   const positional = [];
@@ -60,6 +64,8 @@ function parseArgs(argv) {
       if (next === undefined) die("--" + key + " 需要一个值");
       flags[key] = next;
       i++;
+    } else if (BOOL_FLAGS.has(key)) {
+      flags[key] = true;
     } else if (next === undefined || next.startsWith("--")) {
       flags[key] = true;
     } else {
@@ -184,9 +190,29 @@ const CMDS = {
   async ask({ positional, flags }) {
     const id = positional[0];
     const text = typeof flags.text === "string" ? flags.text : "";
-    if (!id || !text) die('用法：cli.mjs ask <ID> --text "..."');
+    if (!id || !text) die('用法：cli.mjs ask <ID> --text "..." [--no-block]');
     const out = await addComment(id, "question", text);
     console.log("已提问。**现在停下来，把这个问题带给人，不要自己假设答案。**");
+
+    // 提问 = 停下来等人，所以卡片要跟着进 blocked。不推的话它继续停在
+    // implementing：占着 WIP 名额（上限 3）、在看板上看起来像在做，实际在等人。
+    // `cli.mjs open` 本来就分得清「等人 / 等 agent」，但人看的是车道，不是 CLI。
+    if (flags["no-block"]) {
+      console.log("（--no-block：stage 保持不动）");
+      return out;
+    }
+    const cur = requireCard(id).stage;
+    if (cur === "blocked") {
+      console.log("stage 保持 blocked（已经在等人了）");
+      return out;
+    }
+    if (cur === "done") {
+      // 已完成的卡上提问是「事后追问」，不该把它拖回未完成的状态
+      console.log("stage 保持 done（已完成的卡不因提问回退，问题仍在卡上等人回答）");
+      return out;
+    }
+    const moved = await setStage(id, "blocked");
+    console.log(id + " " + cur + " → blocked（rev " + moved.rev + "）：这张卡在等人回答，不再占着 " + cur + " 的名额");
     return out;
   },
 
@@ -202,22 +228,27 @@ const CMDS = {
     const [id, next] = positional;
     if (!id || !next) die("用法：cli.mjs stage <ID> <" + store.STAGES.join("|") + ">");
     if (!store.STAGES.includes(next)) die("stage 只允许 " + store.STAGES.join("/"));
-    const out = await withFallback(
-      () => viaHttp("/api/cards/" + id, { method: "PATCH", body: JSON.stringify({ stage: next }) }),
-      () => {
-        const cards = store.readAllCards();
-        const map = new Map(cards.map((x) => [x.id, x]));
-        const card = map.get(id);
-        if (!card) die("卡片不存在：" + id);
-        card.stage = next;
-        const depErr = store.checkDependsOn(card, map);
-        if (depErr) die(depErr);
-        return saveLocal(card);
-      }
-    );
+    const out = await setStage(id, next);
     console.log(id + " → " + out.stage + "（rev " + out.rev + "）");
   },
 };
+
+/** 推进 stage。抽出来是因为 `ask` 也要用——提问之后卡片得跟着进 blocked。 */
+async function setStage(id, next) {
+  return withFallback(
+    () => viaHttp("/api/cards/" + id, { method: "PATCH", body: JSON.stringify({ stage: next }) }),
+    () => {
+      const cards = store.readAllCards();
+      const map = new Map(cards.map((x) => [x.id, x]));
+      const card = map.get(id);
+      if (!card) die("卡片不存在：" + id);
+      card.stage = next;
+      const depErr = store.checkDependsOn(card, map);
+      if (depErr) die(depErr);
+      return saveLocal(card);
+    }
+  );
+}
 
 async function addComment(id, kind, text, extra = {}) {
   const out = await withFallback(
@@ -251,7 +282,7 @@ if (!cmd || cmd === "-h" || cmd === "--help" || !CMDS[cmd]) {
       "  ack     <ID> <留言id>                      确认一条人写的决策",
       "  resolve <ID> <留言id>                      标记为已完成",
       '  comment <ID> --kind progress|evidence|note|blocker --text "..."',
-      '  ask     <ID> --text "..."                 提问后停下来等人',
+      '  ask     <ID> --text "..." [--no-block]    提问 → 卡片进 blocked → 停下来等人',
       '  answer  <ID> --re <留言id> --text "..."',
       "  stage   <ID> <" + store.STAGES.join("|") + ">",
       "",

@@ -128,6 +128,15 @@
   .brand-name { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
   .brand-sub { font-size: 12.5px; color: var(--ink-dim); }
 
+  .topbar-actions { display: flex; align-items: center; gap: 14px; }
+  .sync { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink-faint); }
+  .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); flex-shrink: 0; transition: background-color .2s ease; }
+  .sync.is-paused .sync-dot { background: var(--ink-faint); }
+  .sync.is-failed .sync-dot { background: var(--crit); }
+  .sync.is-failed { color: var(--crit); }
+  .sync-btn { border: none; background: var(--surface-sunken); color: var(--ink-dim); font-size: 11.5px; font-weight: 600; padding: 5px 10px; border-radius: 8px; transition: background-color .15s ease, color .15s ease; }
+  .sync-btn:hover { color: var(--ink); }
+
   .view-tabs { display: flex; gap: 4px; background: var(--surface-sunken); border-radius: 10px; padding: 3px; }
   .view-tabs button { border: none; background: transparent; color: var(--ink-dim); font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 8px; transition: background-color .15s ease, color .15s ease; }
   .view-tabs button:hover { color: var(--ink); }
@@ -326,9 +335,16 @@
       <span class="brand-name">治理看板</span>
       <span class="brand-sub">人 ↔ AI 的决策通道</span>
     </div>
-    <div class="view-tabs" role="tablist">
-      <button type="button" class="is-active" data-view="board" role="tab">看板</button>
-      <button type="button" data-view="roadmap" role="tab">蓝图</button>
+    <div class="topbar-actions">
+      <div class="sync" id="sync">
+        <span class="sync-dot"></span>
+        <span class="tabular" id="sync-text">同步中…</span>
+        <button type="button" class="sync-btn" id="sync-btn">立即同步</button>
+      </div>
+      <div class="view-tabs" role="tablist">
+        <button type="button" class="is-active" data-view="board" role="tab">看板</button>
+        <button type="button" data-view="roadmap" role="tab">蓝图</button>
+      </div>
     </div>
   </div>
 </div>
@@ -717,9 +733,15 @@
   function renderRoadmap() {
     document.getElementById("roadmap").innerHTML = EPICS.length
       ? EPICS.map(epicCardHtml).join("")
-      : '<p class="no-tasks">尚无 Epic。开始新项目时，先跟 Claude 说明这个项目要做什么，' +
-        '走一遍 spec-interrogation → implementation-plan 流程，把功能模块（Epic）、用户需求（User Story）' +
-        '写进 <span class="mono">tools/kanban/epics.json</span>，任务卡再通过看板分页的「+ 新增卡片」建立并指定 Epic / User Story。</p>';
+      // 这段是每个全新安装第一眼看到的东西，必须和 AGENTS.md 的「必要流程」一致。
+      // 上游原文写的是「走一遍 spec-interrogation → implementation-plan」，和它自己的
+      // AGENTS.md 矛盾——而上游 project-kickoff.md 三处都把 spec-interrogation 定位成
+      // 「某个 Epic/User Story 范围不清时」的子步骤，不是项目入口。这里按 AGENTS.md 改正。
+      : '<p class="no-tasks">尚无 Epic。全新项目直接跑 <span class="mono">project-kickoff</span>——' +
+        '它自己会先问部署目标、技术栈与硬性限制，再主动列出候选的功能模块让你勾选，' +
+        '不必先另外聊一轮。跑完 Epic、User Story 会写进 <span class="mono">tools/kanban/epics.json</span>，' +
+        '任务卡也会一并建好。<br>（<span class="mono">spec-interrogation</span> 是给「某个 Epic 范围还不清楚」' +
+        '用的澄清子步骤，不是项目入口。）</p>';
   }
 
   function renderAll() { renderLanes(); renderRoadmap(); }
@@ -1062,6 +1084,9 @@
     var card = e.target.closest(".ticket-card");
     if (card) card.classList.remove("is-dragging");
     document.querySelectorAll(".lane.is-drag-over").forEach(function (l) { l.classList.remove("is-drag-over"); });
+    // 放弃的拖拽（没落到任何车道上）不会触发 drop，dragId 就一直留着。
+    // 自动同步用 dragId 判断「人正在拖」，不清掉的话一次放弃的拖拽会让同步永久停摆。
+    dragId = null;
   });
 
   document.addEventListener("dragover", function (e) {
@@ -1264,7 +1289,77 @@
     if (e.key === "Escape" && !document.getElementById("modal-overlay").hidden) closeModal();
   });
 
-  loadAll().then(renderAll).catch(function (err) { showToast("读取失败：" + err.message, true); });
+  /* ── 自动同步 ──
+   * agent 在 CLI 那侧推进卡片时，人开着的看板必须自己更新。不更新的话，这块
+   * 「人 ↔ AI 决策通道」在协作过程中就只是一张静态截图——实测卡片在 implementing
+   * 停留 4-15 分钟，人不手动 F5 就完全看不见它来过。
+   *
+   * 用轮询而不是 SSE：本地单人看板，server 是零依赖的 node:http，加长连接会让它
+   * 复杂一个量级，换来的只是几秒延迟。
+   */
+  var POLL_MS = 4000;
+  var lastSnapshot = null;
+  var syncFailed = false;
+
+  /** 返回「现在不该刷新」的原因，没有就返回 null。
+   *  刷新会重建 DOM，所以任何时候人手上有未落盘的状态都必须让路——
+   *  把人正在编辑的内容刷掉，比晚几秒看到 agent 的改动糟糕得多。 */
+  function syncPausedReason() {
+    if (document.hidden) return "标签页在后台";
+    if (openId) return "卡片详情开着";
+    if (dragId) return "正在拖拽";
+    return null;
+  }
+
+  function snapshot() { return JSON.stringify(TICKETS) + " " + JSON.stringify(EPICS); }
+
+  function renderSyncStatus(paused) {
+    var box = document.getElementById("sync");
+    var txt = document.getElementById("sync-text");
+    if (!box || !txt) return;
+    box.classList.toggle("is-failed", syncFailed);
+    box.classList.toggle("is-paused", !syncFailed && !!paused);
+    if (syncFailed) { txt.textContent = "同步失败，server 还在吗"; return; }
+    if (paused) { txt.textContent = "已暂停 · " + paused; return; }
+    var d = new Date();
+    txt.textContent = "已同步 " + String(d.getHours()).padStart(2, "0") + ":" +
+      String(d.getMinutes()).padStart(2, "0") + ":" + String(d.getSeconds()).padStart(2, "0");
+  }
+
+  /** @param {boolean} manual 手动点「立即同步」时无视暂停条件 */
+  function syncNow(manual) {
+    var paused = manual ? null : syncPausedReason();
+    if (paused) { renderSyncStatus(paused); return Promise.resolve(false); }
+    return loadAll().then(function () {
+      syncFailed = false;
+      var snap = snapshot();
+      var changed = snap !== lastSnapshot;
+      lastSnapshot = snap;
+      // 没变就不重绘：重绘会让滚动位置和展开状态跳回去，每 4 秒跳一次没法用
+      if (changed) { renderAll(); if (openId) openModal(openId); }
+      renderSyncStatus(null);
+      return changed;
+    }).catch(function () {
+      // 轮询失败不弹 toast——server 一重启就是连续几十次失败，会把界面刷满。
+      // 标在状态位上就够了，人看得到。
+      syncFailed = true;
+      renderSyncStatus(null);
+      return false;
+    });
+  }
+
+  document.getElementById("sync-btn").addEventListener("click", function () { syncNow(true); });
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) syncNow(false);   // 切回来立刻补一次，不用等下一个周期
+    else renderSyncStatus(syncPausedReason());
+  });
+  setInterval(function () { syncNow(false); }, POLL_MS);
+
+  loadAll().then(function () {
+    lastSnapshot = snapshot();
+    renderAll();
+    renderSyncStatus(null);
+  }).catch(function (err) { showToast("读取失败：" + err.message, true); });
 })();
 </script>
 </body>
