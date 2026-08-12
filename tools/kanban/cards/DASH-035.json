@@ -2,14 +2,14 @@
   "id": "DASH-035",
   "title": "全新安装会把分发源的 epics.json 原样种进目标",
   "content": "## 目标\n全新安装的项目，`tools/kanban/epics.json` 应该是空的，而不是分发源自己的 Epic。\n\n## 背景\n`install-into-project.sh` 把 `tools/kanban/epics.json` 放在 `keep` 列表里——\n目标没有就从分发源**复制一份过去**。于是 `real_rpg` 装完之后带着 my_dashboard\n自己的四个 Epic（看板可用性 / 人机决策通道 / 简体化与文档 / 分发能力）。\n\n对比之下 `cards/` 的处理是对的：只建空骨架 + `.gitkeep`，绝不复制分发源的卡片。\n`epics.json` 应当一致——它和 `cards/` 一样是「那个项目的内容」，不是 kit 内容。\n\n影响：新项目一开局，看板「蓝图」分页显示四个毫不相干的 Epic，完成度也是错的。\n`project-kickoff` 步骤 3 要「写进 epics.json 的 epics[]」，agent 若用追加而非替换，\n污染就留下来了。medical_tourism 与 three_kingdoms_traveler 各自 kickoff / 迁移时\n已经换掉，real_rpg 也已在 2026-08-08 kickoff 后换成自己的 27 个 Epic——\n**但脚本的缺陷还在，下一个新项目照样中招。**\n\n## 范围\n- `scripts/install-into-project.sh`：`epics.json` 从 `keep` 列表移出，改成\n  「目标没有就写一份 `{\"epics\": []}`」，与 `cards/` 的处理方式一致；已存在则原样不动。\n- `tools/kanban/test.sh`：补断言——全新安装后 `epics.json` 是空数组，\n  且不含分发源的任何 Epic 名称。\n\n## 非目标\n- 不改已装的三个项目（它们的 epics.json 已经是自己的了）。\n- 不动 `cards/` 的既有处理（本来就是对的，本卡以它为范本）。\n- 不改界面在 epics 为空时的显示——若那时蓝图页很难看，另立卡。\n\n## 情境包\n- `install-into-project.sh` 的 project-owned 列表（约 `:330`）与紧随其后的\n  `cards/` 空骨架处理（约 `:337`），后者就是要照抄的模式。\n- `tools/kanban/epics.json` 的 schema：`{\"epics\": [{name, definition, stories: [...]}]}`。\n- `ai/skills/project-kickoff.md:89` 是写入 epics.json 的地方。\n\n## 验收标准\n- 全新安装后目标的 `epics.json` 是 `{\"epics\": []}`。\n- 目标已有 `epics.json` 时一个字节都不动。\n- 界面在 epics 为空时不报错（打开蓝图页确认）。\n\n## 验证契约\n- `npm test`\n- 临时目录全新安装一次，检查 epics.json 内容\n- 起 server 打开蓝图页确认空 epics 不炸",
-  "stage": "verify",
+  "stage": "done",
   "risk": "low",
   "owner": "willmusubi",
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-08-08",
-  "updatedAt": "2026-08-09T23:07:27+07:00",
-  "rev": 7,
+  "updatedAt": "2026-08-12T15:25:58+07:00",
+  "rev": 9,
   "epic": "分发能力",
   "userStory": "安全分发",
   "track": "backend",
@@ -88,6 +88,18 @@
       "re": null,
       "supersedes": [],
       "text": "关卡勾选留痕：test 与 code_review 自行勾。low + backend 的必需关卡是 product / test / code_review 三项，现已齐（product 在本轮依用户「做。请继续」的授权勾过）。"
+    },
+    {
+      "id": "c-20260812T152558-ddf1",
+      "at": "2026-08-12T15:25:58+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-12T15:25:58+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收：用户本轮「1. 验收」。low+backend 的必需关卡 product/test/code_review 已齐。"
     }
   ]
 }

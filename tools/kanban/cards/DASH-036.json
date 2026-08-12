@@ -2,14 +2,14 @@
   "id": "DASH-036",
   "title": "看板空状态文案与 AGENTS.md 对「新项目从哪开始」说法不一致",
   "content": "## 目标\n把看板空 epics 时的引导文案改成与 `AGENTS.md` 一致：全新项目先跑 `project-kickoff`。\n\n## 背景\n`tools/kanban/index.html:736` 的空状态写「开始新项目时……走一遍\n**spec-interrogation → implementation-plan** 流程」，而 `AGENTS.md:38` 写\n「全新项目、还没有任何 Epic/任务待办时，**先跑 project-kickoff**」。\n\n这不是小事：DASH-035 之后每个全新安装的 epics.json 都是空的，**这段文案就是新项目\n第一眼看到的东西**。用户本轮问过「先聊 idea 还是直接 kickoff」，界面当时给的答案\n和文档不一样。\n\n## 查证（用户要求先看上游怎么做）\n- 上游 `index.html:392` 有同一段文案（繁体）→ **这个不一致是上游自带的**，\n  本 fork 只在 `e4096f1` 把它翻成简体，不是我们引入的。\n- 上游 `AGENTS.md:24` 与本 fork 一字不差：全新项目先跑 `project-kickoff`。\n- 上游 `project-kickoff.md` 三处引用 `spec-interrogation`，**全都是**「若某个 Epic /\n  User Story / 阶段的**范围还不清楚**，先用它澄清」——它是 kickoff **内部的子步骤**，\n  处理局部范围不清，不是项目入口。\n\n结论：`AGENTS.md` 是对的，界面文案是错的，且错在上游。\n\n## 范围\n- `tools/kanban/index.html` 空状态那段文案（约 736-738 行）。\n\n## 非目标\n- 不改 `AGENTS.md`、不改 `project-kickoff.md`、不改 `spec-interrogation.md`——它们是对的。\n- 不改版面、不动样式，只改这段文字。\n- 不往上游提 PR（本 fork 与上游的关系是只拉不推）。\n\n## 情境包\n- `tools/kanban/index.html:736-738`：`renderRoadmap()` 里 epics 为空时的分支。\n- `AGENTS.md:38`「必要流程」第一句。\n- `ai/skills/project-kickoff.md`：步骤 1 是项目规格澄清，步骤 3/4 有 MECE 检查主动穷举\n  候选模块——这正是「先聊 idea」想要的东西，已经包含在 kickoff 里。\n\n## 验收标准\n- 空状态文案指向 `project-kickoff`，并说清它自带规格澄清（不必先另外聊一轮）。\n- 顺带说明 `spec-interrogation` 的正确定位（某个 Epic 范围不清时才用），\n  免得把它整个抹掉之后没人知道它什么时候用。\n- 蓝图页在 epics 为空时仍无运行时报错。\n\n## 验证契约\n- `npm test`\n- 在空 epics 的看板上打开蓝图页，肉眼确认文案\n- `bash scripts/check-governance.sh`",
-  "stage": "verify",
+  "stage": "done",
   "risk": "low",
   "owner": "willmusubi",
   "agent": "claude-code",
   "approvalRequired": true,
   "createdAt": "2026-08-11",
-  "updatedAt": "2026-08-11T22:47:47+07:00",
-  "rev": 4,
+  "updatedAt": "2026-08-12T15:25:59+07:00",
+  "rev": 8,
   "epic": "看板可用性",
   "userStory": "字段可编辑",
   "track": "frontend",
@@ -26,7 +26,7 @@
   },
   "gates": {
     "product": true,
-    "ui": false,
+    "ui": true,
     "architecture": false,
     "security": false,
     "test": true,
@@ -72,6 +72,18 @@
       "re": null,
       "supersedes": [],
       "text": "授权留痕：用户本轮第 2 条要求「具体以哪个为准，你应该看源头项目 Monstrare 怎么操作的，先学习一下」。已查上游（git fetch upstream，a187710）：上游 index.html:392 有同一段文案，AGENTS.md:24 又说先跑 project-kickoff——**不一致是上游自带的**；上游 project-kickoff.md 三处把 spec-interrogation 定位为「范围不清时的子步骤」而非入口。据此定案以 AGENTS.md 为准，勾 product 与 human_approval_recorded。\n\nui 关卡不勾——track=frontend 时它属于人。这次是文案事实性修正、不涉及版面或互动方案，但勾不勾是你的。"
+    },
+    {
+      "id": "c-20260812T152558-de52",
+      "at": "2026-08-12T15:25:58+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-12T15:25:58+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收：用户本轮「1. 验收」，涵盖 ui 关卡——即认可「这是文案的事实性修正、不涉及版面或互动方案选型，不出 mockup 变体」的判定。low+frontend 的必需关卡 product/ui/test/code_review 已齐。"
     }
   ]
 }
