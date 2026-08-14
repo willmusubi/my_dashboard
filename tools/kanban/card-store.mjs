@@ -511,17 +511,35 @@ export function detectCycle(startId, cardMap) {
   return visit(startId);
 }
 
-/** 检查一张卡的 dependsOn：引用是否存在、是否成环、要推进到 ready 之后时前置是否都 done。
- *  cardMap 必须包含本次「即将写入」的最新版本。 */
-export function checkDependsOn(card, cardMap) {
-  const missing = card.dependsOn.filter((id) => !cardMap.has(id));
+/** 检查这次写入在 dependsOn 上做了什么：新增的引用是否存在、是否成环、
+ *  以及要把 stage 往前推到 ready 之后时前置是否都 done。
+ *  cardMap 必须包含本次「即将写入」的最新版本；prev 是磁盘上的旧版本（新卡传 null）。
+ *
+ *  判据是**这次写入做了什么**，不是卡片当下在哪一栏。两者的差别是致命的：
+ *  按当下状态判，一张已经处在「advanced stage + 依赖未完成」的卡就再也写不进去了
+ *  ——勾个 gate、回写证据、甚至只是被同栏拖拽带着改 order，都会被这条检查拒掉。
+ *  而拖拽走的是整批 PUT，于是一张**这次根本没碰**的违规卡能否决整批，拖 A 报 C 的错。
+ *  这种坏状态确实只能由「直接写卡片文件」产生，但产生之后必须还能被修好。 */
+export function checkDependsOn(card, cardMap, prev = null) {
+  const added = prev ? card.dependsOn.filter((id) => !prev.dependsOn.includes(id)) : card.dependsOn;
+  // 往前走才算推进：verify → blocked / implementing 是退回来收拾残局，不该被拦。
+  const advancing = prev
+    ? STAGES.indexOf(card.stage) > STAGES.indexOf(prev.stage)
+    : true;
+  if (!added.length && !(advancing && ADVANCED_STAGES.includes(card.stage))) return null;
+
+  // 只校验这次新增的引用。既有的悬空引用不构成拒绝理由：界面上没有 dependsOn
+  // 编辑器，把它当拒绝理由就等于让整条车道只能靠手改 JSON 才救得回来。
+  const missing = added.filter((id) => !cardMap.has(id));
   if (missing.length) return card.id + "：dependsOn 引用到不存在的卡片：" + missing.join(", ");
 
-  const cycle = detectCycle(card.id, cardMap);
-  if (cycle) return card.id + "：检测到循环依赖：" + cycle.join(" -> ");
+  if (added.length) {
+    const cycle = detectCycle(card.id, cardMap);
+    if (cycle) return card.id + "：检测到循环依赖：" + cycle.join(" -> ");
+  }
 
   if (ADVANCED_STAGES.includes(card.stage)) {
-    const unmet = card.dependsOn.map((id) => cardMap.get(id)).filter((d) => d.stage !== "done");
+    const unmet = card.dependsOn.map((id) => cardMap.get(id)).filter((d) => d && d.stage !== "done");
     if (unmet.length) {
       return (
         card.id + "：前置任务尚未完成（" +

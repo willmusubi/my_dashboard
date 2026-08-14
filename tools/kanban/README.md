@@ -70,7 +70,7 @@ npm run kanban
 | `createdAt` | string | 建立日期 `YYYY-MM-DD`，新增时由 server 填当天 |
 | `epic` | string | 对应 `epics.json` 里某个 Epic 的 `name`，留空代表未分类 |
 | `userStory` | string | 对应该 Epic 底下某个 User Story 的 `name`，留空代表未分类 |
-| `dependsOn` | array | 前置任务卡片 id 数组（字符串），默认 `[]`；要推进到 `ready`／`implementing`／`verify`／`done` 前，数组里列出的卡片都必须是 `done`，见下方「dependsOn 硬防呆」 |
+| `dependsOn` | array | 前置任务卡片 id 数组（字符串），默认 `[]`；要**推进**到 `ready`／`implementing`／`verify`／`done` 前，数组里列出的卡片都必须是 `done`（只改别的字段不受限），见下方「dependsOn 硬防呆」 |
 | `order` | number | 栏内排序，整数、栏内从 1 起 |
 | `readiness` | object | 对应 `ai/templates/kanban-card.md` 的 7 项 Readiness，各为 boolean |
 | `gates` | object | 6 个 Review Gates（product/ui/architecture/security/test/code_review），各为 boolean |
@@ -97,15 +97,20 @@ npm run kanban
 
 ### dependsOn 硬防呆
 
-`PUT /api/cards/:id`、`PUT /api/cards`（bulk）、`POST /api/cards` 对 `dependsOn` 一律做以下检查，违反时回 400、不写入文件：
+`PUT /api/cards/:id`、`PUT /api/cards`（bulk）、`PATCH /api/cards/:id`、`POST /api/cards` 对 `dependsOn` 做以下检查，违反时回 400、不写入文件：
 
-- **格式**：必须是字符串数组，且每个元素要符合 id 格式 `^{ID_PREFIX}-\d{3,}$`。
-- **自我依赖**：不可包含卡片自己的 id。
-- **存在性**：数组里的每个 id 都必须是目前真的存在的卡片（含这次请求里一起送进来的其他卡）。
-- **循环依赖**：以 `dependsOn` 建图做 DFS，侦测到循环（例如 `A -> B -> A`）就拒绝，错误消息会列出循环路径。
-- **推进阻挡**：若这次要把 `stage` 改成 `ready`／`implementing`／`verify`／`done` 之一，`dependsOn` 列出的卡片必须全部是 `done`，否则回 400 并列出还没完成的卡片 id 与标题。移动到 `backlog`／`blocked` 不受此限制。
+- **格式**（每次写入都查）：必须是字符串数组，且每个元素要符合 id 格式 `^{ID_PREFIX}-\d{3,}$`。
+- **自我依赖**（每次写入都查）：不可包含卡片自己的 id。
+- **存在性**：这次**新增**的 id 必须是真的存在的卡片（含同一请求里一起送来的其他卡）。
+- **循环依赖**：这次新增了依赖时，以 `dependsOn` 建图做 DFS，侦测到循环（例如 `A -> B -> A`）就拒绝，错误消息会列出循环路径。
+- **推进阻挡**：这次**真的把 `stage` 往前推**到 `ready`／`implementing`／`verify`／`done`，或**新增**了依赖时，`dependsOn` 列出的卡片必须全部是 `done`，否则回 400 并列出还没完成的卡片 id 与标题。
 
-删除卡片不会自动清除其他卡对它的 `dependsOn` 参照；看板 UI 读到参照不存在的 id 时会显示警示，但不会挡任何操作。
+后三项的判据是**这次写入做了什么**，不是卡片当下在哪一栏。差别在这里：
+
+- 只改 `order`（拖拽会把同栏其他卡的序号一起送上来）、勾 `gates`、回写 `evidence`、把 `stage` 往回退、删掉一个没完成的依赖 —— 一律放行。
+- 反过来按「卡片当下的状态」判，一张已经处在「advanced stage + 依赖未完成」的卡就再也写不进去了：它自己冻死，还会在整批 PUT 里否决同批的其他卡（拖 A 报 C 的错）。而界面上没有 `dependsOn` 编辑器，唯一的出路是手改 JSON。
+
+删除卡片会自动清除其他卡对它的 `dependsOn` 参照（回应里的 `dependsOnCleaned` 列出被清理的卡）。万一还是出现了参照不存在的 id（例如手改文件），看板 UI 会显示警示，但不挡任何操作。
 
 ## 已知限制（v1）
 

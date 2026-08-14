@@ -1,0 +1,102 @@
+{
+  "id": "DASH-037",
+  "title": "依赖门禁改为只校验本次推进：别让旁观者的旧违规否决整批拖拽",
+  "content": "目标：依赖门禁只校验「这次写入实际造成的推进」，不再因为卡片当下的状态就冻结它。\n\n背景（real_rpg 实测复现，两个场景都是 400）：\nRR-025/026/027 三张卡都在 verify，且 026 依赖 025、027 依赖 026，都没 done。\n- 勾 RR-026 的 product gate → 400「RR-026：前置任务尚未完成」。stage 一动没动，\n  只是勾了个 checkbox，却因为卡片当下就违规而被拒。卡片被彻底冻结：进不去也出不来。\n- 拖 RR-025 → done → 400「RR-027：前置任务尚未完成」。拖 A 报 C 的错。\n  拖拽走整批 PUT，RR-025 离开 verify 后同栏卡片 order 前移，于是 026/027 也在 payload 里；\n  handlePutBulk 对每一张都跑 checkDependsOn，一个早就存在、这次没碰的违规否决整批。\n- 对照：只送 RR-025 一张 → 200。证明毒源是同批里的旁观者，不是被拖的那张卡。\n\n根因：checkDependsOn 判断的是 card.stage（卡片当下在哪），而不是这次写入做了什么。\n坏状态的来源是另一回事：RR-027.json 第一次进 git 就是 stage=verify / rev=1，\n说明卡片文件被直接写出来，POST/PATCH 的防呆压根没执行过——但之后每次写入都为它买单。\n\n非目标：\n- 不改「依赖未完成就不能推进」这条规则本身，只改它什么时候触发。\n- 不做 doctor / issues 可见性，不立「禁止直接写卡片 JSON」的规矩（人工决定：本卡只修门禁）。\n\n验收标准：\n- checkDependsOn 收到磁盘上的旧版本；只在 ① stage 往前推进到 advanced stage\n  或 ② dependsOn 新增了元素 时才检查未完成依赖 / 悬空引用 / 成环。\n- 放行：只改 order、勾 gate、写 evidence、stage 回退、删掉一个未完成的依赖。\n- 仍拦住：依赖未完成时把卡从 verify 推到 done；新增一个未完成的依赖到已推进的卡。\n- 新卡（POST，没有旧版本）行为不变，照旧全检。\n- 回归测试覆盖上述放行与拦截各至少两条，含「整批 PUT 里的旁观者不再连坐」。\n\n允许改的文件：tools/kanban/card-store.mjs, tools/kanban/server.mjs, tools/kanban/cli.mjs,\ntools/kanban/test-store.mjs, tools/kanban/test.sh, tools/kanban/README.md\n验证命令：npm test",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": false,
+  "createdAt": "2026-08-14",
+  "updatedAt": "2026-08-14T17:22:28+07:00",
+  "rev": 9,
+  "epic": "看板可用性",
+  "userStory": "字段可编辑",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "npm test → card-store 单元 104 通过 / 0 失败（新增 11 条依赖门禁断言）；HTTP 集成 + 分发脚本 92 通过 / 0 失败（新增 U10 五条）",
+      "改动前先跑红：新增的 11 条里有 4 条红（勾 gate 被拒、旁观者被拒、stage 回退被拒、既有悬空引用冻结卡片），实现后全绿",
+      "real_rpg 现场复现（卡片副本 + 真实 HTTP，端口 4499）：改动前『勾 RR-026 的 product gate』400、『拖 RR-025 → done』400 且报的是 RR-027 的错、『只送 RR-025 一张』200；改动后前两者都 200",
+      "同一份副本上验链条仍有效：RR-027 → done 在 RR-026 未完成时 400；RR-026 → done 200（RR-025 已 done）；随后 RR-027 → done 200",
+      "scripts/upgrade-all.sh --dry-run → 3 个项目各覆盖 6 个 kanban 文件、保留项目自有文件；实跑 → 成功 3、跳过 0、失败 0，已备份",
+      "real_rpg 内跑 npm run kanban:test → 104 + 60 通过 / 0 失败（含新增的依赖门禁与 U10 断言）",
+      "real_rpg 真实卡片上做只读校验（不写盘）：勾 RR-026 的 product gate 放行；RR-025 → done 的整批拖拽三张卡全放行；RR-027 → done 仍被拦（RR-026 未完成）"
+    ],
+    "findings": [
+      "根因一句话：checkDependsOn 判的是『卡片当下在哪一栏』，不是『这次写入做了什么』。于是一张已经处在 advanced stage + 依赖未完成的卡，任何写入都被拒——勾 gate、回写证据、改 owner 全部写不进去。卡片冻死，而界面上没有 dependsOn 编辑器，唯一出路是手改 JSON。",
+      "根因二（连坐）：拖拽走整批 PUT，被拖的卡离开车道后同栏卡片 order 前移，于是它们也进 payload；handlePutBulk 对每一张都跑检查，一张这次根本没碰的违规卡否决整批。用户看到的是『拖 A，报 C 的错』——这个错误消息本身没错，错的是它根本不该被检查。对照组（只送被拖的那一张 → 200）把毒源钉死在旁观者身上。",
+      "坏状态从哪来：RR-027.json 第一次进 git 就是 stage=verify / rev=1，说明卡片文件是被直接写出来的，POST/PATCH 的防呆压根没执行过。API 防不住『不走 API 的写入』，所以门禁必须能容忍既存的坏状态并允许把它修好，而不是假设坏状态不存在。",
+      "新判据：只在 ① stage 沿 STAGES 顺序往前推进到 advanced stage，或 ② dependsOn 新增了元素 时才校验。往回退（verify → implementing / blocked）不校验——那正是收拾残局的动作。删掉一个未完成的依赖也放行，那是唯一的自助解套路径。",
+      "既有的悬空引用改为不再阻挡：存在性只校验这次新增的 id。理由是 handleDelete 已经会自动清理引用，剩下的悬空只可能来自手改文件，而卡面已有『⚠️ 依赖的卡片已不存在』徽章。把它当拒绝理由等于让整条车道只能靠手改 JSON 救回来，这正是 DASH-001 记过一次的教训。",
+      "拦截能力一条没丢：依赖未完成时推进照旧 400，新增未完成的依赖照旧 400，新增引用不存在的卡照旧 400，新增依赖成环照旧 400，新卡（无旧版本）行为与改动前完全一致。"
+    ],
+    "residual": "1) real_rpg 和其他已装项目跑的还是旧代码，RR-025/026/027 现在仍然锁着——要有人跟：批准跑 upgrade-all 分发出去（见回复里的 Todo）。不分发的话这次修复对那三张卡等于没发生。\n2) 『agent 直接写卡片 JSON 绕过 API 防呆』这个坏状态的来源，本卡按人工决定不处理（用户在选项里选了『只修依赖门禁』）。不用为它建卡：门禁改成能容忍并修复坏状态之后，这条路径的破坏力已经从『锁死车道』降到『卡片状态一时不准』。重新评估的触发条件——如果再出现绕过 API 写入导致的、门禁修不回来的状态，那时再收紧写入口。\n3) 既有悬空引用不再阻挡推进，属于刻意放宽。不用跟：handleDelete 会自动清理，卡面有警示徽章。触发条件——如果出现『依赖的卡被删掉了，下游却被当成前置已满足而放行』造成的实际误判，再回来把它收紧成警告级。"
+  },
+  "comments": [
+    {
+      "id": "c-20260814T170424-9afc",
+      "at": "2026-08-14T17:04:24+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-14T17:04:24+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户 2026-08-14 在「这次修到哪一层？」的选项里选了「只修依赖门禁（推荐）」——改 checkDependsOn 的语义 + 4 处调用点 + 回归测试，不做 /api/issues 可见性、不立「禁止直接写卡片 JSON」的规矩。据此把这两项写进本卡非目标，并勾 readiness.human_approval_recorded。授权范围仅限本卡。\n\n问题来源：用户报告 real_rpg 的 RR-025/026/027 三张卡互相锁死，已在卡片副本上用真实 HTTP 请求复现（含对照组）。"
+    },
+    {
+      "id": "c-20260814T171934-1e90",
+      "at": "2026-08-14T17:19:34+07:00",
+      "author": "willmusubi",
+      "authorKind": "human",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-08-14T17:19:34+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "批准"
+    },
+    {
+      "id": "c-20260814T172217-fd25",
+      "at": "2026-08-14T17:22:17+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-14T17:22:17+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户 2026-08-14 在收尾 Todo 之后回复「我批准了，分发后提交」。据此 ① 跑 scripts/upgrade-all.sh 分发到 medical_tourism / real_rpg / three_kingdoms_traveler，② 勾 product 关卡并推 done，③ 提交本轮改动。授权范围仅限本卡。\n\n分发结果：3 个项目全部成功，每个只覆盖 6 个 kanban 文件（server / card-store / cli / test.sh / test-store / README），项目自有文件与卡片一律保留，被覆盖的文件已备份到各项目的 .kanban-backup-20260814-172128。目标项目的工作区里本来就有未提交的自有改动，所以只在 my_dashboard 提交，不代它们提交。"
+    }
+  ]
+}

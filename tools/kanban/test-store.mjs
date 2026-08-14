@@ -320,6 +320,82 @@ console.log("── 注入围栏：正文不得冒充系统段落 ──");
     auto1.match(/fence="([0-9a-f]{8})"/)[1] !== auto2.match(/fence="([0-9a-f]{8})"/)[1]);
 }
 
+console.log("── 依赖门禁：只校验本次写入造成的推进 ──");
+{
+  const mk = (n, stage, deps = []) =>
+    store.fillDefaults({
+      id: store.formatId(n), title: "dep-" + n, stage, risk: "low",
+      owner: "liutong", createdAt: store.todayStr(), order: 1, dependsOn: deps,
+    });
+  // 复刻 real_rpg 的现场：三张卡都已经停在 verify，而 A→B→C 一路依赖都没 done。
+  // 这种状态只能由「直接写卡片文件」产生，但产生之后必须还能被修好。
+  const A = mk(101, "verify");
+  const B = mk(102, "verify", [A.id]);
+  const C = mk(103, "verify", [B.id]);
+  const DONE = mk(104, "done");
+  const map = () => new Map([A, B, C, DONE].map((c) => [c.id, { ...c }]));
+
+  const m1 = map();
+  const bGate = { ...B, gates: { ...B.gates, product: true } };
+  m1.set(bGate.id, bGate);
+  eq("已违规的卡勾 gate（stage 没动）→ 放行", store.checkDependsOn(bGate, m1, B), null);
+
+  const m2 = map();
+  const cMoved = { ...C, order: 7 };
+  m2.set(cMoved.id, cMoved);
+  eq("整批 PUT 里只改 order 的旁观者 → 放行", store.checkDependsOn(cMoved, m2, C), null);
+
+  const m3 = map();
+  const bBack = { ...B, stage: "implementing" };
+  m3.set(bBack.id, bBack);
+  eq("stage 回退（verify → implementing）→ 放行", store.checkDependsOn(bBack, m3, B), null);
+
+  const m4 = map();
+  const bFreed = { ...B, dependsOn: [] };
+  m4.set(bFreed.id, bFreed);
+  eq("删掉未完成的依赖来解套 → 放行", store.checkDependsOn(bFreed, m4, B), null);
+
+  const m5 = map();
+  const bDone = { ...B, stage: "done" };
+  m5.set(bDone.id, bDone);
+  truthy("依赖未完成仍拦住 verify → done", store.checkDependsOn(bDone, m5, B));
+
+  const m6 = map();
+  const cAdd = { ...C, dependsOn: [B.id, A.id] };
+  m6.set(cAdd.id, cAdd);
+  truthy("给已推进的卡新增未完成的依赖 → 拦住", store.checkDependsOn(cAdd, m6, C));
+
+  const m7 = map();
+  const cTypo = { ...C, dependsOn: [B.id, store.formatId(999)] };
+  m7.set(cTypo.id, cTypo);
+  truthy("新增的依赖引用到不存在的卡 → 拦住", store.checkDependsOn(cTypo, m7, C));
+
+  const m8 = map();
+  const aCycle = { ...A, dependsOn: [C.id] };
+  m8.set(aCycle.id, aCycle);
+  truthy("新增依赖造成成环 → 拦住", store.checkDependsOn(aCycle, m8, A));
+
+  // 悬空引用只能由手改文件产生，而界面上没有 dependsOn 编辑器——再把它当成
+  // 拒绝理由，这张卡和整条车道就永远拖不动了。卡面已有「⚠️ 依赖的卡片已不存在」。
+  const m9 = map();
+  const dangling = { ...C, dependsOn: [store.formatId(998)] };
+  const dangMoved = { ...dangling, order: 9 };
+  m9.set(dangMoved.id, dangMoved);
+  eq("既有的悬空引用不冻结卡片（只改 order）→ 放行",
+    store.checkDependsOn(dangMoved, m9, dangling), null);
+
+  // 新卡没有旧版本，判据只能是它自己的状态——行为与改动前一致。
+  const m10 = map();
+  const fresh = mk(105, "ready", [A.id]);
+  m10.set(fresh.id, fresh);
+  truthy("新卡（无旧版本）依赖未完成就建在 ready → 拦住",
+    store.checkDependsOn(fresh, m10, null));
+  const m11 = map();
+  const freshOk = mk(106, "ready", [DONE.id]);
+  m11.set(freshOk.id, freshOk);
+  eq("新卡依赖已 done → 放行", store.checkDependsOn(freshOk, m11, null), null);
+}
+
 console.log("── 原子写 ──");
 {
   const c = blank(store.formatId(9));

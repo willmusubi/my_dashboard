@@ -242,8 +242,9 @@ async function setStage(id, next) {
       const map = new Map(cards.map((x) => [x.id, x]));
       const card = map.get(id);
       if (!card) die("卡片不存在：" + id);
+      const prev = { ...card };   // card 是原地改的，旧 stage 得先留一份
       card.stage = next;
-      const depErr = store.checkDependsOn(card, map);
+      const depErr = store.checkDependsOn(card, map, prev);
       if (depErr) die(depErr);
       return saveLocal(card);
     }

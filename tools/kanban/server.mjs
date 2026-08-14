@@ -156,7 +156,7 @@ function handlePutOne(req, res, id, body) {
   const err = store.validateCard(c);
   if (err) return sendJson(res, 400, { error: err });
   cardMap.set(c.id, c);
-  const depErr = store.checkDependsOn(c, cardMap);
+  const depErr = store.checkDependsOn(c, cardMap, current);
   if (depErr) return sendJson(res, 400, { error: depErr });
   store.bumpRev(c);
   store.writeCard(c);
@@ -166,7 +166,10 @@ function handlePutOne(req, res, id, body) {
 function handlePutBulk(res, body) {
   const list = JSON.parse(body);
   if (!Array.isArray(list)) return sendJson(res, 400, { error: "body 必须是 card 数组" });
-  const cardMap = new Map(store.readAllCards().map((x) => [x.id, x]));
+  // disk 留着不动：依赖门禁要拿「写入前」和「写入后」对比，才分得清这次拖拽真正
+  // 推进了哪张卡、哪些只是被带着改了 order。cardMap 会被下面写入后的版本覆盖。
+  const disk = new Map(store.readAllCards().map((x) => [x.id, x]));
+  const cardMap = new Map(disk);
 
   // 先比对 rev，且必须在 fillDefaults 之前——fillDefaults 会给缺 rev 的卡补
   // rev=1，之后就分不清「客户端没带 rev」和「客户端带的是 1」。
@@ -195,7 +198,7 @@ function handlePutBulk(res, body) {
   }
   for (const c of prepared) cardMap.set(c.id, c);
   for (const c of prepared) {
-    const depErr = store.checkDependsOn(c, cardMap);
+    const depErr = store.checkDependsOn(c, cardMap, disk.get(c.id) || null);
     if (depErr) return sendJson(res, 400, { error: depErr });
   }
   for (const c of prepared) {
@@ -327,7 +330,7 @@ function handlePatchCard(req, res, id, body) {
   const err = store.validateCard(merged);
   if (err) return sendJson(res, 400, { error: err });
   cardMap.set(merged.id, merged);
-  const depErr = store.checkDependsOn(merged, cardMap);
+  const depErr = store.checkDependsOn(merged, cardMap, current);
   if (depErr) return sendJson(res, 400, { error: depErr });
   store.bumpRev(merged);
   store.writeCard(merged);

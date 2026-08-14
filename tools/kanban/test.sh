@@ -104,6 +104,59 @@ print(json.dumps([c for c in d if c['id']=='$USER']))")
 CODE=$(curl -s -o /tmp/bulk.json -w '%{http_code}' -X PUT "$BASE/api/cards" -H 'Content-Type: application/json' -d "$BULK")
 chk "清理后仍可整批 PUT（车道没被锁死）" "$CODE" "200"
 
+echo "── U10：依赖门禁只挡本次推进，不连坐也不冻结 ──"
+# 复刻 real_rpg 的现场：RR-025/026/027 一路依赖，却全都停在 verify。
+# 这种状态只能由「直接写卡片文件」产生（RR-027 第一次进 git 就是 verify/rev 1），
+# 但产生之后必须还能被修好——否则那两条车道只剩手改 JSON 一条路。
+D1=$(post '{"title":"前置","stage":"backlog"}' | jq_ "d['id']")
+D2=$(post "{\"title\":\"中间\",\"stage\":\"backlog\",\"dependsOn\":[\"$D1\"]}" | jq_ "d['id']")
+D3=$(post "{\"title\":\"下游\",\"stage\":\"backlog\",\"dependsOn\":[\"$D2\"]}" | jq_ "d['id']")
+python3 - "$CARDS" "$D1" "$D2" "$D3" <<'PY'
+import json, sys
+cards = sys.argv[1]
+for cid in sys.argv[2:]:
+    p = cards + "/" + cid + ".json"
+    d = json.load(open(p)); d["stage"] = "verify"
+    with open(p, "w") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2); f.write("\n")
+PY
+getcard(){ curl -s "$BASE/api/cards" | python3 -c "
+import sys,json;d=json.load(sys.stdin);print(json.dumps([c for c in d if c['id']=='$1'][0]))"; }
+
+# ① 勾一个 gate：stage 一动没动，不该被当成推进
+GATED=$(getcard "$D2" | python3 -c "
+import sys,json;c=json.load(sys.stdin);c['gates']['product']=True;print(json.dumps(c))")
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/cards/$D2" \
+  -H 'Content-Type: application/json' -H "If-Match: $(getcard "$D2" | jq_ "d['rev']")" -d "$GATED")
+chk "依赖未完成的卡仍能勾 gate（stage 没动）" "$CODE" "200"
+
+# ② 真正的推进照旧拦住
+TODONE=$(getcard "$D2" | python3 -c "
+import sys,json;c=json.load(sys.stdin);c['stage']='done';print(json.dumps(c))")
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/cards/$D2" \
+  -H 'Content-Type: application/json' -H "If-Match: $(getcard "$D2" | jq_ "d['rev']")" -d "$TODONE")
+chk "依赖未完成时 verify → done 仍被拦住" "$CODE" "400"
+
+# ③ 拖 D1 进 done：同栏的 D2/D3 序号前移，会一起进 payload。
+#    它们早就违规，但这次只改了 order——不该连坐否决整批（拖 A 报 C 的错）。
+DRAG=$(curl -s "$BASE/api/cards" | python3 -c "
+import sys,json;d=json.load(sys.stdin);m={c['id']:c for c in d}
+a=m['$D1']; a['stage']='done'; a['order']=99
+b=m['$D2']; b['order']=1
+c=m['$D3']; c['order']=2
+print(json.dumps([a,b,c]))")
+CODE=$(curl -s -o /tmp/dragbulk.json -w '%{http_code}' -X PUT "$BASE/api/cards" \
+  -H 'Content-Type: application/json' -d "$DRAG")
+chk "拖前置卡进 done 不被同批旁观者的旧违规否决" "$CODE" "200"
+chk "前置卡确实落盘成 done" "$(getcard "$D1" | jq_ "d['stage']")" "done"
+
+# ④ 前置完成后，下游自然解开——链条一节一节松，不需要手改 JSON
+NOWOK=$(getcard "$D2" | python3 -c "
+import sys,json;c=json.load(sys.stdin);c['stage']='done';print(json.dumps(c))")
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/cards/$D2" \
+  -H 'Content-Type: application/json' -H "If-Match: $(getcard "$D2" | jq_ "d['rev']")" -d "$NOWOK")
+chk "前置 done 之后下游可以推进" "$CODE" "200"
+
 echo "── U9：乐观锁挡住静默覆盖 ──"
 CUR=$(curl -s "$BASE/api/cards" | python3 -c "
 import sys,json;d=json.load(sys.stdin);print(json.dumps([c for c in d if c['id']=='$USER'][0]))")
