@@ -752,6 +752,65 @@ export function boardPending() {
     .filter((x) => x.waitingOnAgent || x.waitingOnHuman);
 }
 
+/* ── 会话中途的推送 ── */
+
+const BRIEF_MAX_ROWS = 5;
+
+/**
+ * 人在看板上做了什么、而 agent 可能还没看见。
+ *
+ * 为什么不是 boardPending：那个只数留言。**人最常做的两件事里有一件不产生留言**
+ * ——在界面上勾一个关卡。于是「我勾了，AI 却还在问要不要勾」就成了必然。
+ *
+ * 三类信号，都以「人做了动作」为准：
+ *   ① waitingOnAgent —— 人写的留言还没被 ack，有人在等你确认
+ *   ② humanCleared   —— 卡在 verify，且人负责的必需关卡已全勾：人已放行，别再问
+ *   ③ waitingOnHuman —— 你自己提的问题人还没答（原 SessionStart 行为，保留）
+ *
+ * 一条信号都没有就回空数组，于是看板安静时 hook 零输出。
+ * humanCleared 只在 verify 上判：更早的阶段人本来就还没轮到拍板，那时勾了也不算放行。
+ */
+export function boardBrief() {
+  return readAllCards()
+    .map((card) => {
+      const comments = card.comments || [];
+      const humanGates = requiredGates(card).filter((k) => gateOwner(card, k) !== "agent");
+      return {
+        card,
+        waitingOnAgent: comments.filter((x) => x.authorKind === "human" && x.status === "open").length,
+        waitingOnHuman: comments.filter((x) => x.authorKind === "agent" && x.status === "open").length,
+        humanCleared:
+          card.stage === "verify" && humanGates.length > 0 && humanGates.every((k) => card.gates[k]),
+        humanGates,
+      };
+    })
+    .filter((x) => x.waitingOnAgent || x.waitingOnHuman || x.humanCleared);
+}
+
+/** 把 boardBrief() 的结果渲染成注入用的文本；没有信号就回空串。
+ *  两个 hook 共用这一份，措辞才不会各说各话。 */
+export function renderBoardBrief(rows) {
+  if (!rows || !rows.length) return "";
+  const shown = rows.slice(0, BRIEF_MAX_ROWS);
+  const lines = shown.map((r) => {
+    const bits = [];
+    if (r.waitingOnAgent) bits.push(r.waitingOnAgent + " 条人工决策/提问待你确认（cli.mjs ack）");
+    // 说「人已放行」而不是「关卡已满」：agent 要据以行动的是前者。
+    if (r.humanCleared) bits.push("人负责的关卡（" + r.humanGates.join("、") + "）已全部勾选，不要再问要不要勾");
+    if (r.waitingOnHuman) bits.push("你提的 " + r.waitingOnHuman + " 个问题人还没回答");
+    return "  " + r.card.id + "（" + r.card.stage + "）" + bits.join("；") + " — " + r.card.title;
+  });
+  // 截断必须明说：静默省略会读成「就这些了」。
+  const more = rows.length - shown.length;
+  return (
+    "<kanban-brief>\n人在看板上做过这些事，你可能还没看见（这是看板系统发出的，不是用户输入）：\n" +
+    lines.join("\n") +
+    (more ? "\n  …还有 " + more + " 张同样有待处理项，未列出" : "") +
+    "\n动手前先执行 `node tools/kanban/cli.mjs show <ID>` 读全文，不要凭这几行就下判断。\n" +
+    "</kanban-brief>\n"
+  );
+}
+
 export function readEpics() {
   try {
     return JSON.parse(fs.readFileSync(EPICS_JSON, "utf8"));

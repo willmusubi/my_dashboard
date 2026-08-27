@@ -1,0 +1,63 @@
+{
+  "id": "DASH-038",
+  "title": "卡片文件从不被校验：坏写入直到人点关卡才炸，且不说是哪张卡",
+  "content": "## 问题\n`tools/kanban/cards/*.json` 里的**真实卡片文件从来没有被校验过**。\n坏写入会一直躺在磁盘上，直到某个人在界面上点关卡时才炸，\n而报错只说「comments[].text 必须是非空字符串」——**不说是哪张卡、哪一条留言**。\n\n人被一个不是自己造成的错误挡住，还拿不到定位信息。\n\n## 复现（2026-08-15 在 medical_tourism 上实测）\n1. 往任意一张卡的 comments 里手写一条 `{author,kind,at,body}`（字段名 body 而非 text）\n2. `npm test` → **通过 104，失败 0**，完全没有察觉\n3. 人在界面上勾任意关卡 → UI 整卡 PUT → 400「comments[].text 必须是非空字符串」\n\n第 2 步是关键：测试套件测的是 store 的函数，不是 `cards/` 里的文件。\n\n## 根因（两半，都要补）\n1. **没有针对磁盘卡片的校验入口。** `validateCard()` 已经存在且够用，\n   只是从没有人拿它去跑一遍真实文件。\n2. **没有东西拦住 agent 直接改 JSON。** epics.json 里\n   「agent 读写通道」这条 story 已经写明「agent 通过 CLI 读卡与回报，不直接改 JSON」——\n   原则写下来了，但没有任何机制执行它。这次就是 agent（我）绕过 API\n   手写卡片造成的。\n\n## 建议做法\n- `npm test` 里加一步：遍历 `tools/kanban/cards/*.json` 逐张跑 `validateCard()`，\n  失败时打印**卡号 + 字段路径 + 那一项的现有字段名**（`字段=[author,kind,at,body]`\n  这种信息足以让人一眼看出把 text 写成了 body）。\n- 同一份校验挂进 `.githooks` 的 pre-commit，坏卡片进不了 commit。\n- CLI 补一个 `validate` 子命令，agent 改完能自己先跑一遍。\n- 考虑给 CLI 补 `create` 子命令：现在建卡只能走 API 或手写文件，\n  而「手写文件」正是这个 bug 的来源。\n\n## 非目标\n- 不改 comment 的 schema（`text` 这个字段名没问题，改名只会波及所有下游）。\n- 不做卡片文件的自动修复——坏了应该报出来让人看见，不该静默改写。\n\n## 验收标准\n- 磁盘上存在一张畸形卡片时，`npm test` **必须红**，且输出里能直接看到卡号与出错字段。\n- 修好之后 `npm test` 绿。\n- 三个下游（medical_tourism / real_rpg / three_kingdoms_traveler）升级后同样具备该校验。\n\n## 验证契约\n- 命令：故意写坏一张卡 → `npm test` 红（贴输出）→ 还原 → 绿\n- 分发：`distributions.json` 里三个项目各跑一次升级并复验",
+  "stage": "backlog",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": false,
+  "createdAt": "2026-08-15",
+  "updatedAt": "2026-08-15T14:50:20+07:00",
+  "rev": 2,
+  "epic": "看板可用性",
+  "userStory": "数据完整性",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": false,
+    "non_goals_clear": false,
+    "acceptance_testable": false,
+    "files_known": false,
+    "scope_defined": false,
+    "verification_contract": false,
+    "human_approval_recorded": false
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": false
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [],
+    "findings": [],
+    "residual": ""
+  },
+  "comments": [
+    {
+      "id": "c-20260815T145020-305a",
+      "at": "2026-08-15T14:50:20+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-08-15T14:50:20+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "在 medical_tourism 上实测复现：手写一条 body 而非 text 的 comment 后，npm test 仍然 104/60 全过，人在界面点关卡时才报 400。现场已用 API 重写那两条留言修复，但根因（磁盘卡片无校验 + 没有机制拦住 agent 手改 JSON）在上游。"
+    }
+  ]
+}

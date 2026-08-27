@@ -157,6 +157,46 @@ CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/cards/$D2" \
   -H 'Content-Type: application/json' -H "If-Match: $(getcard "$D2" | jq_ "d['rev']")" -d "$NOWOK")
 chk "前置 done 之后下游可以推进" "$CODE" "200"
 
+echo "── U11：人在看板上做的事要推到 agent 眼前 ──"
+# 真的跑 hook 进程。这一关只能这样测：函数单测过了不代表 hook 会输出，
+# 而「hook 什么都没吐」正是人勾了关卡、AI 却还在问要不要勾的那个 bug。
+HOOK="$REPO/tools/kanban/hooks/inject-card-context.mjs"
+hook(){ echo "{\"prompt\":\"$1\"}" | KANBAN_CARDS_DIR="$CARDS" node "$HOOK"; }
+
+HK=$(post '{"title":"人写了决策的卡","stage":"backlog"}' | jq_ "d['id']")
+# 不带 X-Kanban-Agent → 服务端记成人写的
+curl -sf -X POST "$BASE/api/cards/$HK/comments" -H 'Content-Type: application/json' \
+  -d '{"kind":"decision","text":"这条是人写的决策，agent 必须遵守"}' >/dev/null
+OUT=$(hook "继续")
+case "$OUT" in
+  *"kanban-brief"*"$HK"*) ok "prompt 不带卡号时退回简报，并点名了 $HK" ;;
+  *) no "prompt 不带卡号时应注入简报" "${OUT:-（空输出）}" ;;
+esac
+
+OUT=$(hook "继续做 $HK")
+case "$OUT" in
+  *"kanban-card"*"生效中的人工决策"*) ok "带卡号时仍注入整张卡（原行为没被改坏）" ;;
+  *) no "带卡号时应注入整张卡" "${OUT:-（空输出）}" ;;
+esac
+case "$OUT" in
+  *"kanban-brief"*) no "带卡号时不该再叠一份简报" "$OUT" ;;
+  *) ok "带卡号时不叠简报" ;;
+esac
+
+# 人只勾关卡、一条留言都不写：这一类原本连 SessionStart 都不会提
+GK=$(post '{"title":"人只勾了关卡的卡","stage":"backlog"}' | jq_ "d['id']")
+curl -sf -X PATCH "$BASE/api/cards/$GK" -H 'Content-Type: application/json' \
+  -d '{"stage":"verify","gates":{"product":true,"ui":false,"architecture":false,"security":false,"test":false,"code_review":false}}' >/dev/null
+OUT=$(hook "可以了")
+case "$OUT" in
+  *"$GK"*"不要再问要不要勾"*) ok "人只勾关卡不留言，简报也报得出来" ;;
+  *) no "人勾了 product 之后简报应点名 $GK" "${OUT:-（空输出）}" ;;
+esac
+
+# SessionStart 那个 hook 与它共用渲染，措辞必须一致
+BRIEF=$(KANBAN_CARDS_DIR="$CARDS" node "$REPO/tools/kanban/hooks/session-board-brief.mjs")
+chk "两个 hook 的简报输出逐字一致" "$BRIEF" "$OUT"
+
 echo "── U9：乐观锁挡住静默覆盖 ──"
 CUR=$(curl -s "$BASE/api/cards" | python3 -c "
 import sys,json;d=json.load(sys.stdin);print(json.dumps([c for c in d if c['id']=='$USER'][0]))")

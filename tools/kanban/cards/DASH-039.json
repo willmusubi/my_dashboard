@@ -1,0 +1,89 @@
+{
+  "id": "DASH-039",
+  "title": "人在看板上做的事要推到 agent 眼前：prompt 没带卡号时回退到简报",
+  "content": "目标：人在会话中途于看板上做的事（写决策、勾关卡），要能推到 agent 眼前，\n不必靠人在对话里手动报卡号。\n\n背景（实测，非推测）：注入机制本身是好的，坏在触发条件。\n- UserPromptSubmit hook 的触发条件是「prompt 里正则匹配到 <PREFIX>-###」。\n  带卡号 → 整张卡注入，人工决策与关卡进度都送到了（实测通过）。\n  不带卡号（「继续」「接着做」「可以了」）→ **零输出**。而人在看板上勾完、\n  留完言之后，回到对话说的正是这类话。\n- SessionStart hook 只在 startup|resume 各跑一次。人在会话中途改看板，\n  没有任何东西告诉 agent——这就是「AI 不会查看并持续和我确认」的直接来源。\n- 只勾 gate 不留言时，boardPending 只数 comments，gate 变化不产生任何待处理项，\n  于是连 SessionStart 那一次也不会提。\n\n非目标：\n- 不改注入的内容格式（renderCardForAgent 与围栏机制照旧，实测是对的）。\n- 不做「上次看到的 rev」这类持久状态；无状态方案已经够用。\n- 不改 cli.mjs open 的输出（boardPending 保持原样，另加函数）。\n\n验收标准：\n- prompt 里没有卡号时，UserPromptSubmit hook 回退到简报模式，不再零输出。\n- 简报只报「人做了什么而 agent 可能没看见」的两类信号：\n  ① 人写的留言还没被 ack；② 卡在 verify 且人负责的必需关卡已全勾（人已放行）。\n  外加 agent 自己提问人还没答的那一类（SessionStart 现有行为，保留）。\n- 看板安静时零输出（token 成本真的是零）。\n- 两个 hook 共用同一个渲染函数，措辞一致。\n- 简报有行数上限，被截断时明说还有几张，不静默省略。\n- 回归测试：boardBrief 的信号判定（含 implementing 阶段不误报）、renderBoardBrief\n  空输入回空串、以及真的跑一次 hook 进程验证「不带卡号也有输出」。\n\n允许改的文件：tools/kanban/card-store.mjs, tools/kanban/hooks/inject-card-context.mjs,\ntools/kanban/hooks/session-board-brief.mjs, tools/kanban/test-store.mjs, tools/kanban/test.sh\n验证命令：npm test\n\n追加（另一个窗口在 medical_tourism 上独立复现，与本卡实测一致，并多找到一条）：\n- SessionStart 的 matcher 是 startup|resume，**不含 clear**。/clear 之后简报根本不跑，\n  agent 上下文清空、看板状态也没人告诉它。官方文档确认合法取值是\n  startup / resume / clear / compact / fork —— 补齐 clear 与 compact。\n  注意 .claude/settings.json 是 project-owned，upgrade 只报漂移不覆盖，\n  三个已装项目要各自手动改。\n- 该窗口还提出「记住每张卡的 rev，只在变高时注入『这张卡在你上次读到之后被改过』」。\n  本卡不采用，理由：① 需要 per-session 持久状态，而 /clear 多半保留同一个 session_id，\n  于是状态在「上下文刚好丢失」的那一刻恰恰是最新的，什么都不会注入；\n  ② 本卡的简报是每卡一行，token 成本可忽略，人还在等的时候每轮提醒本来就是对的行为。\n  代价：人只改卡片正文（不留言、不勾关卡）的情况简报抓不到——写进 residual。",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": false,
+  "createdAt": "2026-08-18",
+  "updatedAt": "2026-08-27T12:38:36+07:00",
+  "rev": 7,
+  "epic": "人机决策通道",
+  "userStory": "强制注入",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 2,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "npm test → card-store 单元 120 通过 / 0 失败（新增 16 条简报断言）；HTTP 集成 + 分发脚本 97 通过 / 0 失败（新增 U11 五条，真的起 hook 进程跑）",
+      "npm run check → governance kit check passed",
+      "改动前先跑红：boardBrief is not a function；实现后全绿",
+      "复现原始场景：prompt「继续」跑 inject-card-context.mjs —— 修改前完全空白，修改后吐出两行简报，人写的决策与人勾的关卡都点了名",
+      "官方文档确认 SessionStart 的合法 matcher 是 startup / resume / clear / compact / fork（code.claude.com/docs/en/hooks）"
+    ],
+    "findings": [
+      "机制没坏，坏的是触发条件。UserPromptSubmit hook 只在 prompt 正则匹配到 <PREFIX>-### 时才输出；带卡号那条路实测完全正常（决策、关卡进度、围栏都送到了）。不带卡号就 exit 0，一个字都不注入。而人在看板上勾完、留完言之后，回到对话说的正是「继续」「可以了」这类话。",
+      "人最常做的两件事里有一件不产生任何留言——在界面上勾一个关卡。原先的 boardPending 只数 comments，于是「我勾了，AI 还在问要不要勾」是结构性的必然，不是模型偷懒。",
+      "SessionStart 的 matcher 是 startup|resume，不含 clear。/clear 之后 agent 上下文清空、看板状态一个字都没跟着重来。这条是另一个窗口在 medical_tourism 上独立发现的。",
+      "新增 boardBrief() 用三类信号判断「人做了动作而 agent 可能没看见」：① 人写的留言未 ack；② 卡在 verify 且人负责的必需关卡已全勾（人已放行）；③ agent 自己的提问人还没答。一条都没有就回空数组，看板安静时 hook 零输出。",
+      "humanCleared 只在 verify 上判：更早的阶段人本来就还没轮到拍板，那时勾了不算放行。单测钉死了这一条（implementing 阶段勾 product 不误报），否则简报会在每张在做的卡上乱叫。",
+      "两个 hook 共用 renderBoardBrief，集成测试逐字比对两者输出。措辞分叉过一次就再也对不齐，而这份文本是 agent 唯一的信号源。",
+      "没有采用「记 rev、只在变高时注入」的方案：需要 per-session 持久状态，而 /clear 多半保留同一个 session_id——状态会在「上下文刚好丢失」的那一刻恰恰是最新的，什么都不注入。无状态方案对本卡的两个症状是完备的。"
+    ],
+    "residual": "1) .claude/settings.json 是 project-owned，upgrade 只报漂移不覆盖，所以 matcher 补 clear|compact 这一条不会自动到三个已装项目。要有人跟：见回复里的 Todo，一行改动，我可以代劳。不改的影响只限于 /clear 与 /compact 之后那一轮，主修复（UserPromptSubmit 回退简报）随 kit 文件正常分发、立刻生效。\n2) 人只改卡片正文（不留言、不勾关卡、不动 stage）时简报抓不到。不用跟：简报每行都要求 agent 先跑 cli.mjs show 读全文，正文会在那一步被读到。重新评估的触发条件——如果出现「人改了验收标准、agent 照旧用旧版本做完」的实际事故，那时再上 rev 差异检测。\n3) 简报在人还在等的时候每轮都会出现，直到 ack 或卡片关掉。这是刻意的：不用跟。每行约 30 字，且只在真有人等的时候才出现；看板安静时零输出，单测钉住了。"
+  },
+  "comments": [
+    {
+      "id": "c-20260818T132539-6ab4",
+      "at": "2026-08-18T13:25:39+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-18T13:25:39+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户 2026-08-18「你能不能帮我测试一下到底能否识别，如果也识别不了请修复」，据此开卡实作并勾 readiness.human_approval_recorded。授权范围仅限本卡。product 关卡仍留给人。\n\n实测结论（三个场景，非推测）：\n① prompt 带卡号「继续做 TEST-001」→ 整张卡注入，人工决策与关卡进度都送到，机制本身是好的。\n② prompt 不带卡号「继续」→ 零输出。人在看板上勾完、留完言之后回到对话说的正是这类话。\n③ 人只勾 gate 不留言 → boardPending 只数 comments，连 SessionStart 那一次也不会提。"
+    },
+    {
+      "id": "c-20260827T123836-4be2",
+      "at": "2026-08-27T12:38:36+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-08-27T12:38:36+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "收尾复验（2026-08-27）：npm test 两套全绿 —— card-store 单元 120 通过 / 0 失败，HTTP 集成 + 分发脚本 97 通过 / 0 失败；npm run check → governance kit check passed。卡片推进到 done，改动随本次 commit 落库。"
+    }
+  ]
+}

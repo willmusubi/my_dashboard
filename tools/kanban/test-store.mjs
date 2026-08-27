@@ -320,6 +320,86 @@ console.log("── 注入围栏：正文不得冒充系统段落 ──");
     auto1.match(/fence="([0-9a-f]{8})"/)[1] !== auto2.match(/fence="([0-9a-f]{8})"/)[1]);
 }
 
+console.log("── 看板简报：人做了什么而 agent 可能没看见 ──");
+{
+  const mk = (n, stage, extra = {}) =>
+    store.fillDefaults({
+      id: store.formatId(n), title: "brief-" + n, stage, risk: "low",
+      owner: "liutong", createdAt: store.todayStr(), order: 1, track: "backend", ...extra,
+    });
+  const dir = store.CARDS_DIR;
+  const wipe = () => fs.readdirSync(dir).forEach((f) => f.endsWith(".json") && fs.unlinkSync(path.join(dir, f)));
+
+  wipe();
+  store.writeCard(mk(201, "implementing"));
+  eq("看板安静时回空数组", store.boardBrief(), []);
+  eq("空输入渲染成空串（hook 零输出）", store.renderBoardBrief([]), "");
+
+  // ① 人写的留言还没被 ack
+  wipe();
+  const withDecision = mk(202, "implementing");
+  store.appendComment(withDecision, { kind: "decision", text: "改用固定人设值。", actor: HUMAN });
+  store.writeCard(withDecision);
+  let rows = store.boardBrief();
+  eq("人写了决策 → 报一张卡", rows.length, 1);
+  eq("计入「待你确认」", rows[0].waitingOnAgent, 1);
+  truthy("渲染里点名了这张卡", store.renderBoardBrief(rows).includes(store.formatId(202)));
+
+  // ack 之后就不该再念
+  const acked = store.readCard(store.formatId(202));
+  store.setCommentStatus(acked, acked.comments[0].id, "acked", "agent");
+  store.writeCard(acked);
+  eq("ack 之后不再报", store.boardBrief(), []);
+
+  // ② 人勾了关卡：一条留言都没有，也要被看见
+  wipe();
+  const cleared = mk(203, "verify");
+  cleared.gates.product = true;
+  store.writeCard(cleared);
+  rows = store.boardBrief();
+  eq("verify 卡上人负责的关卡已全勾 → 报", rows.length, 1);
+  truthy("说明是「人已放行」而不是「等人」", rows[0].humanCleared);
+
+  // 同样勾了 product，但还在 implementing——人还没轮到拍板，不该误报
+  wipe();
+  const early = mk(204, "implementing");
+  early.gates.product = true;
+  store.writeCard(early);
+  eq("implementing 阶段勾了 product 不误报", store.boardBrief(), []);
+
+  // 人负责的关卡只勾了一半（frontend 卡要 product + ui）→ 还没放行，不报
+  wipe();
+  const half = mk(205, "verify", { track: "frontend" });
+  half.gates.product = true;
+  store.writeCard(half);
+  eq("人负责的关卡只勾了一半 → 不报", store.boardBrief(), []);
+
+  // ③ agent 自己提的问题人还没答 —— SessionStart 原有行为，保留
+  wipe();
+  const asked = mk(206, "blocked");
+  store.appendComment(asked, { kind: "question", text: "手机版要不要保留 drawer？", actor: AGENT });
+  store.writeCard(asked);
+  rows = store.boardBrief();
+  eq("agent 的未答提问仍会报", rows.length, 1);
+  eq("方向是「等人回答」", rows[0].waitingOnHuman, 1);
+
+  // ④ 行数上限：截断了必须明说，不能静默省略
+  wipe();
+  for (let i = 0; i < 8; i++) {
+    const c = mk(210 + i, "verify");
+    c.gates.product = true;
+    store.writeCard(c);
+  }
+  rows = store.boardBrief();
+  eq("八张卡全部进 rows（不在数据层截断）", rows.length, 8);
+  const text = store.renderBoardBrief(rows);
+  truthy("渲染时截断，并说明还有几张没列出", /还有 \d+ 张/.test(text));
+  const listed = text.split("\n").filter((l) => l.startsWith("  " + store.ID_PREFIX + "-"));
+  eq("最多列出 5 张，其余归进「还有 N 张」", listed.length, 5);
+  truthy("没列出的张数说对了", text.includes("还有 " + (rows.length - listed.length) + " 张"));
+  wipe();
+}
+
 console.log("── 依赖门禁：只校验本次写入造成的推进 ──");
 {
   const mk = (n, stage, deps = []) =>
