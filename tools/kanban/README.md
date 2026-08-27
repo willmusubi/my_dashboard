@@ -51,6 +51,51 @@ npm run kanban
 - 也可以直接改 JSON 档（或 `git checkout` 还原），重新整理页面即生效。
 - 新卡片的默认 owner 与留言作者取自本机 `git config user.name`（server 启动时读一次，经 `GET /api/config` 提供给前端）；没设定时 owner 留空、留言作者显示「匿名」。
 
+## 卡片文件的校验
+
+「也可以直接改 JSON 档」这条留着，但手改容易写坏，而坏写入以前一路静默到有人在
+界面上点关卡才炸——报错只说「comments[].text 必须是非空字符串」，不说是哪张卡。
+
+现在有三个入口跑同一份校验（parse → fillDefaults → validateCard，和整卡 PUT 同一条路）：
+
+```bash
+node tools/kanban/cli.mjs validate            # 整个 cards/
+node tools/kanban/cli.mjs validate a.json …   # 只校验指定文件
+npm test                                      # 头一段就是它，坏卡片直接让测试红
+git commit                                    # pre-commit 钩子，坏卡片进不了 commit
+```
+
+报错会点名卡号，并列出可疑那条留言的**现有字段名**：
+
+```
+  ✗ DASH-012  comments[].text 必须是非空字符串
+      comments[0] 字段=[author,kind,at,body]
+```
+
+钩子拆成两份，因为项目往往已经有自己的 pre-commit（medical_tourism 的那份是密钥泄漏防线）：
+
+| 文件 | 归属 | 升级时 |
+|---|---|---|
+| `.githooks/kanban-cards.sh` | kit | 每次刷新到最新 |
+| `.githooks/pre-commit` | 项目 | 只在还没有时给一份，之后只报差异、绝不覆盖 |
+
+已经有自己的 pre-commit 的项目，把这一行加进去就接上了：
+
+```bash
+bash "$(git rev-parse --show-toplevel)/.githooks/kanban-cards.sh" || exit 1
+```
+
+**每个 clone 还要各接一次 `core.hooksPath`**（它存在 `.git/config` 里，git 不追踪）：
+
+```bash
+git config core.hooksPath .githooks
+```
+
+安装脚本会在目标项目的 `core.hooksPath` 还没被占用时替它设好；已经在用
+husky / lefthook 的项目不覆盖，只提示。钩子只校验**这次要提交的**卡片，
+不是整个 `cards/`——别人写坏的一张卡不该让碰都没碰它的人提交不了东西。
+真要跳过：`git commit --no-verify`。
+
 ## WIP 上限
 
 `implementing`（Implementing 进行中）上限 3、`verify`（Verify 验证中）上限 5，沿用 `ai/process/kanban.md` 对 Agent Working / Needs Review 的建议值。车道张数超过上限时，车道标头的计数 badge 会变红。上限只在 `index.html` 的 `WIP_CAPS` 里（纯前端视觉化，server 不做强制）。

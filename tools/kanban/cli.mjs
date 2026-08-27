@@ -15,10 +15,12 @@
  *   node tools/kanban/cli.mjs ask     <ID> --text "..."   提问，把卡推进 blocked 并停下来等人
  *   node tools/kanban/cli.mjs answer  <ID> --re <留言id> --text "..."
  *   node tools/kanban/cli.mjs stage   <ID> <backlog|blocked|ready|implementing|verify|done>
+ *   node tools/kanban/cli.mjs validate [文件...]         校验磁盘上的卡片文件
  *
  * server 没开也能用：走 HTTP 失败就回退到直接读写文件。人不会一直开着看板，
  * 而 agent 撞 ECONNREFUSED 之后要么放弃、要么开始手改 JSON——那正是要消灭的失败模式。
  */
+import fs from "node:fs";
 import * as store from "./card-store.mjs";
 
 // 端口与 id 前缀都来自 card-store 的统一配置（config.json），
@@ -224,6 +226,30 @@ const CMDS = {
     return addComment(id, "answer", text, { re });
   },
 
+  /** 校验磁盘上的卡片文件。不带参数 = 整个 cards/；带参数 = 只校验指定文件
+   *  （pre-commit 用这条路，把 index 里的内容导到临时文件再传进来）。 */
+  async validate({ positional }) {
+    let checked, problems;
+    if (positional.length) {
+      problems = [];
+      for (const f of positional) {
+        const p = store.validateCardText(f, fs.readFileSync(f, "utf8"));
+        if (p) problems.push(p);
+      }
+      checked = positional.length;
+    } else {
+      ({ checked, problems } = store.validateAllCardFiles());
+    }
+    if (!problems.length) {
+      console.log("卡片文件校验通过（" + checked + " 张）");
+      return;
+    }
+    console.error("卡片文件校验失败（" + problems.length + "/" + checked + " 张）：");
+    process.stderr.write(store.renderCardFileProblems(problems));
+    console.error("这些文件是手写坏的。修好再提交——不修的话，下一个在界面上点关卡的人会撞上一个不是他造成的 400。");
+    process.exitCode = 1;
+  },
+
   async stage({ positional }) {
     const [id, next] = positional;
     if (!id || !next) die("用法：cli.mjs stage <ID> <" + store.STAGES.join("|") + ">");
@@ -286,6 +312,7 @@ if (!cmd || cmd === "-h" || cmd === "--help" || !CMDS[cmd]) {
       '  ask     <ID> --text "..." [--no-block]    提问 → 卡片进 blocked → 停下来等人',
       '  answer  <ID> --re <留言id> --text "..."',
       "  stage   <ID> <" + store.STAGES.join("|") + ">",
+      "  validate [文件...]                        校验卡片文件（不带参数＝整个 cards/）",
       "",
       "身份：KANBAN_AGENT（Claude Code 下自动为 claude-code）",
       "端口：KANBAN_PORT（默认 4430）；server 没开时自动回退到直接读写文件",

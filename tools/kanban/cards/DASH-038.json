@@ -2,35 +2,35 @@
   "id": "DASH-038",
   "title": "卡片文件从不被校验：坏写入直到人点关卡才炸，且不说是哪张卡",
   "content": "## 问题\n`tools/kanban/cards/*.json` 里的**真实卡片文件从来没有被校验过**。\n坏写入会一直躺在磁盘上，直到某个人在界面上点关卡时才炸，\n而报错只说「comments[].text 必须是非空字符串」——**不说是哪张卡、哪一条留言**。\n\n人被一个不是自己造成的错误挡住，还拿不到定位信息。\n\n## 复现（2026-08-15 在 medical_tourism 上实测）\n1. 往任意一张卡的 comments 里手写一条 `{author,kind,at,body}`（字段名 body 而非 text）\n2. `npm test` → **通过 104，失败 0**，完全没有察觉\n3. 人在界面上勾任意关卡 → UI 整卡 PUT → 400「comments[].text 必须是非空字符串」\n\n第 2 步是关键：测试套件测的是 store 的函数，不是 `cards/` 里的文件。\n\n## 根因（两半，都要补）\n1. **没有针对磁盘卡片的校验入口。** `validateCard()` 已经存在且够用，\n   只是从没有人拿它去跑一遍真实文件。\n2. **没有东西拦住 agent 直接改 JSON。** epics.json 里\n   「agent 读写通道」这条 story 已经写明「agent 通过 CLI 读卡与回报，不直接改 JSON」——\n   原则写下来了，但没有任何机制执行它。这次就是 agent（我）绕过 API\n   手写卡片造成的。\n\n## 建议做法\n- `npm test` 里加一步：遍历 `tools/kanban/cards/*.json` 逐张跑 `validateCard()`，\n  失败时打印**卡号 + 字段路径 + 那一项的现有字段名**（`字段=[author,kind,at,body]`\n  这种信息足以让人一眼看出把 text 写成了 body）。\n- 同一份校验挂进 `.githooks` 的 pre-commit，坏卡片进不了 commit。\n- CLI 补一个 `validate` 子命令，agent 改完能自己先跑一遍。\n- 考虑给 CLI 补 `create` 子命令：现在建卡只能走 API 或手写文件，\n  而「手写文件」正是这个 bug 的来源。\n\n## 非目标\n- 不改 comment 的 schema（`text` 这个字段名没问题，改名只会波及所有下游）。\n- 不做卡片文件的自动修复——坏了应该报出来让人看见，不该静默改写。\n\n## 验收标准\n- 磁盘上存在一张畸形卡片时，`npm test` **必须红**，且输出里能直接看到卡号与出错字段。\n- 修好之后 `npm test` 绿。\n- 三个下游（medical_tourism / real_rpg / three_kingdoms_traveler）升级后同样具备该校验。\n\n## 验证契约\n- 命令：故意写坏一张卡 → `npm test` 红（贴输出）→ 还原 → 绿\n- 分发：`distributions.json` 里三个项目各跑一次升级并复验",
-  "stage": "backlog",
+  "stage": "verify",
   "risk": "medium",
   "owner": "willmusubi",
   "agent": "",
   "approvalRequired": false,
   "createdAt": "2026-08-15",
-  "updatedAt": "2026-08-15T14:50:20+07:00",
-  "rev": 2,
+  "updatedAt": "2026-08-27T13:06:39+07:00",
+  "rev": 8,
   "epic": "看板可用性",
   "userStory": "数据完整性",
   "track": "backend",
   "dependsOn": [],
   "order": 1,
   "readiness": {
-    "problem_clear": false,
-    "non_goals_clear": false,
-    "acceptance_testable": false,
-    "files_known": false,
-    "scope_defined": false,
-    "verification_contract": false,
-    "human_approval_recorded": false
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
   },
   "gates": {
     "product": false,
     "ui": false,
     "architecture": false,
     "security": false,
-    "test": false,
-    "code_review": false
+    "test": true,
+    "code_review": true
   },
   "links": {
     "featureSpec": "",
@@ -42,9 +42,26 @@
   },
   "refs": [],
   "evidence": {
-    "commands": [],
-    "findings": [],
-    "residual": ""
+    "commands": [
+      "npm test → card-store 单元 133 通过 / 0 失败（新增 13 条文件校验断言）；HTTP 集成 + 分发 115 通过 / 0 失败（新增 U12 五条真跑 git commit，外加分发侧 7 条）",
+      "npm run check → governance kit check passed（三个下游各自跑也全 passed）",
+      "验证契约的红→绿：往真实的 DASH-012 手写一条 {author,kind,at,body} → npm test 立刻红，输出「✗ DASH-012  comments[].text 必须是非空字符串 / comments[0] 字段=[author,kind,at,body]」，退出码 1 → 还原 → 133+115 全绿",
+      "pre-commit 实测：坏卡片 git commit 被拦、HEAD 没动；工作树好而 index 坏时仍拦（校验的是 index）；好卡片正常提交；--no-verify 仍可跳过",
+      "bash scripts/upgrade-all.sh → 成功 3、跳过 0、失败 0；三个下游 core.hooksPath 均已指向 .githooks，卡片校验 38 / 54 / 68 张全部通过"
+    ],
+    "findings": [
+      "根因两半都补上了。① 校验入口：validateCardText() 走的路径和人在界面上整卡 PUT 完全一致（parse → fillDefaults → validateCard），所以这里报红的就是那时会弹 400 的，不多也不少；报错点名卡号，并列出可疑那条留言的现有字段名（字段=[author,kind,at,body] 一眼就看出 text 写成了 body）。② 执行力：npm test 头一段跑真实 cards/、CLI 有 validate 子命令、pre-commit 拦 commit，三个入口共用同一份逻辑。",
+      "测试自己也要能证明会红。只断言「cards/ 干净」的话，校验逻辑整个失效（比如 validate 永远 exit 0）照样一片绿。所以另有一条拿畸形卡片喂进去、断言必红且报得出卡号与字段名。",
+      "顺手补了 validateCard 结构上看不见的一项：文件名与 id 不一致。readCard(id) 是按 <id>.json 找文件的，对不上的那张卡在界面上看得见、用 CLI 却「卡片不存在」。",
+      "pre-commit 只校验本次暂存的卡片，不校验整个 cards/。沿用 DASH-037 定下的原则：别人手写坏的一张卡，不该让一个碰都没碰它的人提交不了东西。",
+      "校验的是 index 里的内容而不是工作树。git add -p 只暂存一半时，工作树那份可能是好的而要提交的那份是坏的——校验工作树就会放它过去。单测钉住了这一条。",
+      "分发时踩到一个真缺陷并改了设计：medical_tourism 已经有自己的 .githooks/pre-commit（MT-002 的密钥泄漏防线），而 kit-owned 的 refresh 会整份覆盖它。改成拆两份——.githooks/kanban-cards.sh 归 kit（每次刷新），.githooks/pre-commit 归项目（只在还没有时给一份，之后只报差异）。medical_tourism 的密钥扫描一个字节没动，只在最前面加了一行调用。",
+      "「不覆盖」还不够，会退化成「装了但不生效」。所以 install 与 check-governance 都会检查项目自有的 pre-commit 有没有调用 kanban-cards.sh，没有就响亮报出来并给出要加的那一行——这种「文件在、机制不生效」的状态在每一份清单上都是绿的，最难发现。",
+      "core.hooksPath 只在还没被占用、且目标是仓库根时才设。已在用 husky/lefthook 的项目不覆盖（静默换掉人家整套提交前检查比不装严重得多）；monorepo 子目录也不动（设了会指到外层仓库，把外层的钩子一起停掉）。判断用 git rev-parse --show-prefix，不拿 --show-toplevel 和路径比字符串——macOS 的 /var、/tmp 是符号链接，两边永远对不上，实测就是这么错的。",
+      "写测试时自己踩了一次：badcard 用 sed 读同一个文件再重定向写回，> 会在 sed 读到之前把文件截成 0 字节，于是测的变成「空文件也拦得住」——断言照样绿，body/text 这个真正要测的 bug 一次都没跑到。改成各写各的 heredoc，并把断言收紧到必须报出 字段=[author,kind,at,body]。",
+      "没做 CLI 的 create 子命令。卡片里写的是「考虑」，验收标准也没要求；而三个校验入口已经能在坏写入落盘的当轮就把它拦下来。要不要做见回复里的 Todo。"
+    ],
+    "residual": "1) medical_tourism 的 .githooks/pre-commit 是项目自有文件，我在它最前面加了一行调用卡片校验。要有人跟：那是别人项目的安全钩子，请扫一眼那一行放的位置合不合适（在密钥扫描之前，因为它最快且只在本次带了卡片文件时才做事）。改动已落在工作树，没有提交。\n2) 三个下游的改动（settings.json 的 matcher、.githooks/、kanban-cards.sh）都停在各自的工作树里，没提交。要有人跟：那三个仓库本来就各有 12 / 10 / 66 个未提交改动，我不清楚哪些该一起进 commit，所以没替你决定。\n3) core.hooksPath 是 per-clone 的本地配置，git 不追踪。不用跟：三个下游本次已经设好了，本仓库也设了；将来新 clone 的人由 README 和安装脚本负责提醒。重新评估的触发条件——出现「换了台机器、钩子没生效、坏卡片又混进 commit」的实际事故。\n4) 钩子可被 git commit --no-verify 一秒绕过。不用跟：这是刻意留的逃生口，且 npm test 那一道拦得住漏网的（CI 若接了 npm test 就是第二道）。这道门防的是手滑，不是防人。"
   },
   "comments": [
     {
@@ -58,6 +75,18 @@
       "re": null,
       "supersedes": [],
       "text": "在 medical_tourism 上实测复现：手写一条 body 而非 text 的 comment 后，npm test 仍然 104/60 全过，人在界面点关卡时才报 400。现场已用 API 重写那两条留言修复，但根因（磁盘卡片无校验 + 没有机制拦住 agent 手改 JSON）在上游。"
+    },
+    {
+      "id": "c-20260827T124536-2b5f",
+      "at": "2026-08-27T12:45:36+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-27T12:45:36+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户 2026-08-27「先帮我完成038，然后帮我解决掉阻塞」，据此开工并勾 readiness.human_approval_recorded。授权范围仅限本卡。product 关卡（这个问题值不值得解决）仍留给人自己勾，我不代勾。"
     }
   ]
 }

@@ -411,6 +411,84 @@ export function writeCard(c) {
   return out;
 }
 
+/* ── 磁盘卡片文件的校验 ── */
+
+/**
+ * 校验一份卡片文件的**文本**。
+ *
+ * 为什么单独有这一层：validateCard() 校验的是内存里的对象，而 test-store 喂给它的
+ * 对象是测试自己造的。`cards/` 里的真实文件从来没被任何一条测试碰过——手写坏的卡
+ * 就这么躺在磁盘上，直到有人在界面上点一下关卡（整卡 PUT）才炸，而那时报错只说
+ * 「comments[].text 必须是非空字符串」，不说是哪张卡、哪一条留言。
+ *
+ * 走的路径和整卡 PUT 完全一致（parse → fillDefaults → validateCard），
+ * 所以这里报红的就是那时会弹 400 的，不多也不少。
+ *
+ * 返回 null 表示没问题，否则 { file, id, error, hint }。
+ */
+export function validateCardText(file, text) {
+  const base = path.basename(file).replace(/\.json$/, "");
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch (err) {
+    return { file, id: "", error: "JSON 解析失败：" + err.message, hint: [] };
+  }
+  if (!isPlainObject(raw)) return { file, id: "", error: "card 必须是 object", hint: [] };
+  const id = typeof raw.id === "string" ? raw.id : "";
+  // validateCard 看不见文件名，可它俩必须一致：readCard(id) 是按 <id>.json 找文件的，
+  // 对不上的那张卡在界面上看得见、用 CLI 却「卡片不存在」。
+  if (id !== base) {
+    return {
+      file, id,
+      error: "文件名与 id 不一致：文件是 " + base + ".json，id 写的是 " + (id || "（缺）"),
+      hint: [],
+    };
+  }
+  // fillDefaults 是原地改的，原始字段名要在它之前抄下来——提示信息全靠这个。
+  const snaps = Array.isArray(raw.comments)
+    ? raw.comments.map((c) => (isPlainObject(c) ? Object.keys(c) : []))
+    : [];
+  const err = validateCard(fillDefaults(raw));
+  if (!err) return null;
+  return { file, id, error: err, hint: err.startsWith("comments") ? suspectComments(snaps) : [] };
+}
+
+/** 哪几条留言的字段名可疑。只挑两类：有白名单外的键、或根本没有 text。
+ *  定位不到就返回空数组——报不出行号总比报错行号强。 */
+function suspectComments(snaps) {
+  const out = [];
+  snaps.forEach((keys, i) => {
+    const unknown = keys.filter((k) => !COMMENT_KEYS.includes(k));
+    if (unknown.length || !keys.includes("text")) {
+      out.push("comments[" + i + "] 字段=[" + keys.join(",") + "]");
+    }
+  });
+  return out;
+}
+
+/** 校验目录里所有卡片文件。返回 { checked, problems }。 */
+export function validateAllCardFiles(dir = CARDS_DIR) {
+  if (!fs.existsSync(dir)) return { checked: 0, problems: [] };
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+  const problems = [];
+  for (const f of files) {
+    const p = validateCardText(f, fs.readFileSync(path.join(dir, f), "utf8"));
+    if (p) problems.push(p);
+  }
+  return { checked: files.length, problems };
+}
+
+/** 给人看的报告。卡号打头，因为人拿到这段话之后第一件事是去打开那张卡。 */
+export function renderCardFileProblems(problems) {
+  const lines = [];
+  for (const p of problems) {
+    lines.push("  ✗ " + (p.id || p.file) + "  " + p.error);
+    for (const h of p.hint) lines.push("      " + h);
+  }
+  return lines.join("\n") + (lines.length ? "\n" : "");
+}
+
 /** 解析失败的卡片文件。刻意「跳过」而不是「合成一张卡塞进列表」：合成卡一旦被
  *  拖拽写回，原始坏文件的内容就被静默覆盖了，而且它会混进整批 PUT 造成整批拒绝。 */
 let BROKEN = [];

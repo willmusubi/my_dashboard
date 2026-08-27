@@ -362,6 +362,7 @@ for p in \
   tools/kanban/server.mjs tools/kanban/card-store.mjs tools/kanban/cli.mjs \
   tools/kanban/index.html tools/kanban/test.sh tools/kanban/test-store.mjs \
   tools/kanban/hooks tools/kanban/README.md \
+  .githooks/kanban-cards.sh \
   scripts/check-governance.sh \
   .github/pull_request_template.md .github/ISSUE_TEMPLATE/ai_task.yml
 do refresh "$p"; done
@@ -369,7 +370,7 @@ do refresh "$p"; done
 say ""
 say "project-owned（目标已有就不碰）："
 # ① kit 有正本、项目可能追加 → 不覆盖，但报告 kit 版多出来的行
-for p in CLAUDE.md AGENTS.md .claude/settings.json
+for p in CLAUDE.md AGENTS.md .claude/settings.json .githooks/pre-commit
 do keep "$p" drift; done
 # ② 内容天生属于项目 → 不覆盖，也不报漂移（内容本来就该不一样）
 # 注意 ai/context 与 ai/artifacts 是**模板占位符**（「状态：模板占位符」＋写法说明），
@@ -418,6 +419,50 @@ else
 }"
   printf '%s\n' "$BODY" | sed 's/^/  /'
   [[ "$DRY" -eq 1 ]] || { mkdir -p "$(dirname "$CFGF")"; printf '%s\n' "$BODY" > "$CFGF"; }
+fi
+
+# ── git hooks：坏卡片进不了 commit ──
+# core.hooksPath 存在 .git/config 里，git 不追踪，所以 cp 完文件还得接这一下，
+# 否则 .githooks/pre-commit 只是一个躺着的文件，一次都不会被执行。
+#
+# **已经被占用就不碰。** 目标可能在用 husky / lefthook，覆盖掉等于把人家整套
+# 提交前检查静默换掉——比不装严重得多。
+say ""
+# 必须是**仓库根**才接。装进 monorepo 的某个子目录时，rev-parse 给的是外层仓库，
+# 在那里设 core.hooksPath=.githooks 会指向 <monorepo>/.githooks —— 一个没有这个
+# 钩子的目录，等于把外层仓库原有的钩子也一起停掉。
+#
+# 用 --show-prefix（在根目录时输出空串）判断，不拿 --show-toplevel 和 $TARGET
+# 比字符串：macOS 的 /var、/tmp 都是符号链接，git 给的是解析后的 /private/var，
+# `cd && pwd` 给的是 /var，两边永远对不上——实测就是这么错的。
+IS_REPO=0; AT_ROOT=0
+if GIT_PREFIX="$(git -C "$TARGET" rev-parse --show-prefix 2>/dev/null)"; then
+  IS_REPO=1
+  [[ -z "$GIT_PREFIX" ]] && AT_ROOT=1
+fi
+CUR_HOOKS="$(git -C "$TARGET" config --local core.hooksPath 2>/dev/null || true)"
+# 项目自有的 pre-commit 没被覆盖是对的，但光是不覆盖还不够：它没调用 kit 的校验时，
+# kanban-cards.sh 只是一个躺着的文件，一次都不会被执行——「装了但不生效」正是这张卡要消灭的。
+PCF="$TARGET/.githooks/pre-commit"
+if [[ -f "$PCF" ]] && ! grep -q "kanban-cards.sh" "$PCF"; then
+  say "  ⚠️  目标的 .githooks/pre-commit 是项目自有的（没被覆盖，这是对的），但它**没有调用**卡片校验。"
+  say "     把这一行加进去，否则 kanban-cards.sh 装了也不会跑："
+  say "       bash \"\$(git rev-parse --show-toplevel)/.githooks/kanban-cards.sh\" || exit 1"
+fi
+if [[ "$IS_REPO" -eq 0 ]]; then
+  say "git hooks：跳过——目标不是 git 仓库（.githooks/pre-commit 已装好，之后 git init 了再跑一次这个脚本）"
+elif [[ "$AT_ROOT" -eq 0 ]]; then
+  say "  ⚠️  目标是某个 git 仓库里的子目录（${GIT_PREFIX%/}）——**不动 core.hooksPath**（设了会指到外层仓库去）。"
+  say "     要启用卡片校验，在外层仓库的钩子里加一行：bash \"${TARGET}/.githooks/pre-commit\""
+elif [[ -z "$CUR_HOOKS" ]]; then
+  say "git hooks：core.hooksPath → .githooks（坏卡片进不了 commit）"
+  [[ "$DRY" -eq 1 ]] || git -C "$TARGET" config --local core.hooksPath .githooks
+elif [[ "$CUR_HOOKS" == ".githooks" ]]; then
+  say "git hooks：已指向 .githooks，不动"
+else
+  say "  ⚠️  core.hooksPath 已经是「${CUR_HOOKS}」（husky？lefthook？）——**不覆盖**。"
+  say "     .githooks/pre-commit 已装好但不会被执行。要启用，把它接进你现有的钩子，或："
+  say "     git config core.hooksPath .githooks   # 会停用 ${CUR_HOOKS} 那一套，想清楚再跑"
 fi
 
 # ── package.json：把看板脚本挂上去 ──

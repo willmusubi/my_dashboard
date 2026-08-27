@@ -28,6 +28,7 @@ required_files=(
   "ai/skills/security-maintainability-review.md"
   "ai/skills/test-verification.md"
   "ai/skills/board-card.md"
+  ".githooks/kanban-cards.sh"
 )
 
 missing=0
@@ -64,6 +65,14 @@ for dir in .claude/skills/*/; do
     echo "warn: $dir 没有对应的 ai/skills/$name.md（若这是项目自有 skill 则可忽略）"
   fi
 done
+
+# 卡片校验装了却没被 pre-commit 调用，等于没装。这种「文件在、机制不生效」的状态
+# 最难发现——它在每一份清单上都是绿的。
+if [[ -f ".githooks/pre-commit" ]] && ! grep -q "kanban-cards.sh" ".githooks/pre-commit"; then
+  echo "missing: .githooks/pre-commit 没有调用 .githooks/kanban-cards.sh（卡片校验装了但不会跑）"
+  echo "         加这一行：bash \"\$(git rev-parse --show-toplevel)/.githooks/kanban-cards.sh\" || exit 1"
+  missing=1
+fi
 
 if [[ "$missing" -ne 0 ]]; then
   echo "governance kit check failed"

@@ -491,5 +491,67 @@ console.log("── 原子写 ──");
   eq("回读后 schema 合法", store.validateCard(store.readCard(c.id)), null);
 }
 
+console.log("── 磁盘卡片文件的校验 ──");
+{
+  const dir = path.join(store.CARDS_DIR, "filecheck");
+  fs.mkdirSync(dir, { recursive: true });
+  const good = blank(store.formatId(20));
+  store.appendComment(good, { kind: "decision", text: "好卡片", actor: HUMAN });
+  const write = (name, obj) =>
+    fs.writeFileSync(path.join(dir, name), JSON.stringify(obj, null, 2) + "\n", "utf8");
+  const raw = (id) => JSON.parse(JSON.stringify({ ...good, id }));
+
+  write(good.id + ".json", good);
+  eq("好卡片通过", store.validateCardText(good.id + ".json", JSON.stringify(good)), null);
+
+  // 原始 bug：手写留言时把 text 写成了 body。测试套件测的是 store 的函数，
+  // 从来没碰过 cards/ 里的文件，所以这种卡一路绿到人在界面上点关卡才炸。
+  const bodyCard = raw(store.formatId(21));
+  bodyCard.comments = [{ author: "liutong", kind: "decision", at: "2026-08-27T10:00:00+07:00", body: "写错字段名了" }];
+  write(bodyCard.id + ".json", bodyCard);
+  const p1 = store.validateCardText(bodyCard.id + ".json", JSON.stringify(bodyCard));
+  truthy("text 写成 body → 报错", !!p1 && /comments\[\]\.text/.test(p1.error));
+  eq("报错带卡号", p1 && p1.id, bodyCard.id);
+  eq("提示点出那一条的现有字段名", p1 && p1.hint, ["comments[0] 字段=[author,kind,at,body]"]);
+
+  // 好留言在前、坏留言在后时，索引要指到坏的那条，不能永远报 0
+  const mixed = raw(store.formatId(22));
+  mixed.comments = [
+    { ...good.comments[0] },
+    { author: "liutong", kind: "note", at: "2026-08-27T10:00:00+07:00", body: "坏的" },
+  ];
+  write(mixed.id + ".json", mixed);
+  const p2 = store.validateCardText(mixed.id + ".json", JSON.stringify(mixed));
+  eq("索引指向真正坏的那一条", p2 && p2.hint, ["comments[1] 字段=[author,kind,at,body]"]);
+
+  // 文件名和 id 对不上：validateCard 看不见文件名，可 readCard 是按文件名找的
+  const misnamed = raw(store.formatId(23));
+  write("wrong-name.json", misnamed);
+  const p3 = store.validateCardText("wrong-name.json", JSON.stringify(misnamed));
+  truthy("文件名与 id 不一致 → 报错", !!p3 && /文件名与 id 不一致/.test(p3.error));
+
+  // 坏 JSON 要报「解析失败」，不是一路冒 SyntaxError
+  const p4 = store.validateCardText("broken.json", "{ 这不是 JSON");
+  truthy("JSON 语法错 → 报解析失败", !!p4 && /JSON 解析失败/.test(p4.error));
+  fs.writeFileSync(path.join(dir, "broken.json"), "{ 这不是 JSON", "utf8");
+
+  // fillDefaults 能补的（旧卡缺新字段）不该被当成坏卡
+  const legacy = raw(store.formatId(24));
+  delete legacy.track;
+  delete legacy.refs;
+  delete legacy.links;
+  write(legacy.id + ".json", legacy);
+  eq("缺字段的旧卡由 fillDefaults 兜住，不报错",
+    store.validateCardText(legacy.id + ".json", JSON.stringify(legacy)), null);
+
+  const r = store.validateAllCardFiles(dir);
+  eq("整目录扫描：数得对", r.checked, 6);
+  eq("整目录扫描：坏的正好 4 张", r.problems.length, 4);
+  truthy("报告里每张坏卡各占一行且带卡号或文件名",
+    store.renderCardFileProblems(r.problems).split("\n").filter((l) => l.startsWith("  ✗")).length === 4);
+  eq("全好时报告是空串", store.renderCardFileProblems([]), "");
+  eq("目录不存在时不炸", store.validateAllCardFiles(path.join(dir, "nope")), { checked: 0, problems: [] });
+}
+
 console.log("\n通过 " + pass + "，失败 " + fail);
 process.exit(fail === 0 ? 0 : 1);

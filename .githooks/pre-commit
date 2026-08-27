@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# **项目自有文件**：kit 只在这里还不存在时给一份，之后升级只报差异、绝不覆盖。
+# 项目往往已经有自己的 pre-commit（密钥扫描之类），那份不能被治理套件毁掉。
+#
+# 启用（每个 clone 各做一次，core.hooksPath 存在 .git/config 里，git 不追踪）：
+#   git config core.hooksPath .githooks
+set -euo pipefail
+
+# 看板卡片校验（kit 维护，逻辑在那个文件里）。已经有自己的 pre-commit 的项目，
+# 把这一行加进去就行。
+bash "$(git rev-parse --show-toplevel)/.githooks/kanban-cards.sh" || exit 1

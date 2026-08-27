@@ -32,6 +32,49 @@ ok(){ echo "  ✅ $1"; PASS=$((PASS+1)); }
 no(){ echo "  ❌ $1"; echo "     got: $2"; FAIL=$((FAIL+1)); }
 chk(){ [ "$2" = "$3" ] && ok "$1" || no "$1" "expected [$3] got [$2]"; }
 
+# 真实的 cards/。上下两套测试都跑在临时目录里——那是对的（上一版直接 rm 真实
+# cards/，真删掉过 12 张卡），但也正是 DASH-038 那个 bug 的藏身处：一张手写坏的卡
+# 躺在磁盘上，测试全绿，直到有人在界面上点一下关卡才炸，而那时只说
+# 「comments[].text 必须是非空字符串」，不说是哪张卡。这一段专门补这个洞。
+#
+# env -u：这个脚本上面 export 了 KANBAN_ID_PREFIX=TEST（测试要封闭），
+# 带着它去校验真实卡片的话，每一张 DASH-### 都会因为 id 不匹配而报红。
+echo "══ 真实卡片文件校验 ══"
+RCOUT="$(cd "$REPO" && env -u KANBAN_ID_PREFIX -u KANBAN_CARDS_DIR node tools/kanban/cli.mjs validate 2>&1)"
+RCRC=$?
+[ "$RCRC" -eq 0 ] && ok "cards/ 里每一张卡都是合法的（$(echo "$RCOUT" | tr -d '\n')）" \
+  || no "真实卡片文件校验没过" "$RCOUT"
+
+# 门禁本身要证明会红。上面那条只在磁盘干净时通过，光有它的话，
+# 校验逻辑整个失效（比如 validate 永远 exit 0）也照样一片绿。
+BADDIR="$TMPROOT/badcards"
+mkdir -p "$BADDIR"
+cat > "$BADDIR/${KANBAN_ID_PREFIX}-001.json" <<'BADCARD'
+{
+  "id": "TEST-001",
+  "title": "手写坏的卡",
+  "stage": "backlog",
+  "risk": "low",
+  "owner": "liutong",
+  "createdAt": "2026-08-27",
+  "order": 1,
+  "comments": [
+    { "author": "liutong", "kind": "decision", "at": "2026-08-27T10:00:00+07:00", "body": "text 写成了 body" }
+  ]
+}
+BADCARD
+BADOUT="$(cd "$REPO" && env -u KANBAN_CARDS_DIR KANBAN_CARDS_DIR="$BADDIR" node tools/kanban/cli.mjs validate 2>&1)"
+BADRC=$?
+{ [ "$BADRC" -ne 0 ] \
+  && echo "$BADOUT" | grep -q "TEST-001" \
+  && echo "$BADOUT" | grep -q "字段=\[author,kind,at,body\]"; } \
+  && ok "磁盘上有畸形卡片时校验必红，且报出卡号与那一条的现有字段名" \
+  || no "畸形卡片没被拦住，或报错里看不出是哪张卡" "rc=$BADRC $BADOUT"
+
+# pre-commit 钩子：坏卡片进不了 commit。这里只验钩子脚本本身跑得通并且会红——
+# 真正的 git 集成在下面 U12 里跑（要一个真的 git 仓库）。
+echo
+
 # 先跑数据层单元测试（不经 HTTP，快且定位准）；挂了就没必要往下跑集成测试。
 echo "══ card-store 单元测试 ══"
 mkdir -p "$TMPROOT/unit"
@@ -381,6 +424,92 @@ chk "server 不可达时 ask 也把卡推进 blocked" \
   "$(python3 -c "import json;print(json.load(open('$CARDS/$CC.json'))['stage'])")" "blocked"
 unset KANBAN_CARDS_DIR KANBAN_AGENT
 
+echo "── U12：坏卡片进不了 commit（pre-commit 钩子）──"
+# 钩子是这套校验唯一「不需要人记得去跑」的入口，所以它自己必须有回归测试。
+# 在一个真的 git 仓库里跑真的 git commit——只跑脚本的话，core.hooksPath、
+# 退出码、index 取值这三处的接线全都测不到。
+if ! command -v git >/dev/null 2>&1; then
+  echo "  ⏭  跳过：环境里没有 git"
+else
+  GR="$TMPROOT/hookrepo"
+  mkdir -p "$GR/tools/kanban/cards" "$GR/.githooks"
+  cp "$REPO/tools/kanban/cli.mjs" "$REPO/tools/kanban/card-store.mjs" "$GR/tools/kanban/"
+  # 前缀跟着上面 export 的 TEST 走，这样钩子里那个 node 进程不管有没有继承
+  # KANBAN_ID_PREFIX，认的都是同一个前缀。
+  printf '%s\n' '{ "idPrefix": "TEST", "port": 4999 }' > "$GR/tools/kanban/config.json"
+  cp "$REPO/.githooks/pre-commit" "$REPO/.githooks/kanban-cards.sh" "$GR/.githooks/"
+  chmod +x "$GR/.githooks/pre-commit" "$GR/.githooks/kanban-cards.sh"
+  git -C "$GR" init -q
+  git -C "$GR" config core.hooksPath .githooks
+  git -C "$GR" config user.email kanban-test@example.com
+  git -C "$GR" config user.name kanban-test
+  git -C "$GR" add -A >/dev/null 2>&1
+  git -C "$GR" commit -qm "底座" >/dev/null 2>&1
+  chk "不带卡片的提交不受影响" "$(git -C "$GR" log --oneline | wc -l | tr -d ' ')" "1"
+
+  # 两个都用自己的 heredoc 整份写出来。**不要**拿 sed 读同一个文件再写回去：
+  # `>` 会在 sed 读到之前就把文件截成 0 字节，于是测的变成「空文件也拦得住」——
+  # 断言照样绿，但 body/text 这个真正要测的 bug 一次都没被跑到。
+  goodcard(){ cat > "$GR/tools/kanban/cards/TEST-001.json" <<'GOODCARD'
+{
+  "id": "TEST-001",
+  "title": "好卡片",
+  "stage": "backlog",
+  "risk": "low",
+  "owner": "liutong",
+  "createdAt": "2026-08-27",
+  "order": 1,
+  "comments": [
+    { "author": "liutong", "kind": "decision", "at": "2026-08-27T10:00:00+07:00", "text": "这条是好的" }
+  ]
+}
+GOODCARD
+  }
+  badcard(){ cat > "$GR/tools/kanban/cards/TEST-001.json" <<'BADCARD2'
+{
+  "id": "TEST-001",
+  "title": "坏卡片",
+  "stage": "backlog",
+  "risk": "low",
+  "owner": "liutong",
+  "createdAt": "2026-08-27",
+  "order": 1,
+  "comments": [
+    { "author": "liutong", "kind": "decision", "at": "2026-08-27T10:00:00+07:00", "body": "text 写成了 body" }
+  ]
+}
+BADCARD2
+  }
+
+  badcard
+  git -C "$GR" add -A >/dev/null 2>&1
+  HOUT=$(git -C "$GR" commit -m "坏卡片" 2>&1); HRC=$?
+  { [ "$HRC" -ne 0 ] \
+    && [ "$(git -C "$GR" log --oneline | wc -l | tr -d ' ')" = "1" ] \
+    && echo "$HOUT" | grep -q "TEST-001" \
+    && echo "$HOUT" | grep -q "字段=\[author,kind,at,body\]"; } \
+    && ok "坏卡片被 pre-commit 拦住，提交没落地，报错点名了卡号与出错字段" \
+    || no "坏卡片提交进去了，或报错里看不出是哪张卡的哪个字段" "rc=$HRC $HOUT"
+
+  # 校验的必须是 index 里的那份。`git add -p` 只暂存一半时，工作树那份可能是好的
+  # 而要提交的那份是坏的——校验工作树就会把坏的放过去。
+  goodcard   # index 里还是坏的，工作树换成好的
+  HRC=0; git -C "$GR" commit -qm "工作树好、index 坏" >/dev/null 2>&1 || HRC=$?
+  [ "$HRC" -ne 0 ] && ok "工作树是好的但 index 是坏的 → 仍然拦住（校验的是 index）" \
+    || no "校验看的是工作树，不是 index" "commit 通过了"
+
+  git -C "$GR" add -A >/dev/null 2>&1
+  git -C "$GR" commit -qm "好卡片" >/dev/null 2>&1
+  chk "好卡片正常提交" "$(git -C "$GR" log --oneline | wc -l | tr -d ' ')" "2"
+
+  # --no-verify 必须留着：钩子不该变成一堵没有门的墙
+  badcard
+  git -C "$GR" add -A >/dev/null 2>&1
+  git -C "$GR" commit -qm "明确跳过" --no-verify >/dev/null 2>&1
+  chk "--no-verify 仍能跳过（留一条明确的逃生口）" \
+    "$(git -C "$GR" log --oneline | wc -l | tr -d ' ')" "3"
+fi
+
 # ── 分发脚本：kit 目录里的项目自有文件必须活下来 ──
 # 实测 three_kingdoms_traveler 在 .claude/skills、ai/process、ai/templates、ai/skills
 # 下各有自有文件。早先 refresh() 整目录 rm -rf 再拷，会把它们静默删掉。
@@ -391,7 +520,7 @@ echo "══ shell 脚本静态检查 ══"
 # （install-into-project.sh 两次、upgrade-all.sh 一次），而且全在**错误路径**上
 # ——平时跑不到，一跑到就崩在最不该崩的地方。所以做成断言而不是靠记性。
 BADVARS=$(grep -n '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' \
-  "$REPO"/scripts/*.sh "$REPO"/tools/kanban/*.sh 2>/dev/null)
+  "$REPO"/scripts/*.sh "$REPO"/tools/kanban/*.sh "$REPO"/.githooks/* 2>/dev/null)
 [ -z "$BADVARS" ] \
   && ok "没有「变量后紧跟全角字符」的写法（这种写法在 set -u 下会崩）" \
   || no "有变量后紧跟全角字符，应改成 \${VAR}" "$BADVARS"
@@ -432,6 +561,61 @@ echo "$IOUT" | grep -q "保留项目自有" \
 echo "$IOUT" | grep -q "kanban:test" \
   && ok "项目已有 test 时改建议 kanban:test" \
   || no "仍建议覆盖既有的 test 脚本" "$IOUT"
+
+# ── git hooks 的分发 ──
+[ -x "$IT/.githooks/kanban-cards.sh" ] \
+  && ok "install 把卡片校验装了进去，且保住可执行位" \
+  || no "kanban-cards.sh 没装进去或丢了可执行位" "$(ls -l "$IT/.githooks" 2>&1)"
+[ -x "$IT/.githooks/pre-commit" ] \
+  && ok "目标原本没有 pre-commit 时给一份现成的" \
+  || no "没给 pre-commit" "$(ls -l "$IT/.githooks" 2>&1)"
+
+# 项目自有的 pre-commit 绝不能被覆盖。实测 medical_tourism 的那份是 MT-002 的
+# 密钥泄漏防线——kit 整份盖过去等于静默拆掉人家的安全门。
+OWN="$TMPROOT/ownhook"; mkdir -p "$OWN/.githooks"
+printf '#!/usr/bin/env bash\n# 项目自己的密钥扫描\nexit 0\n' > "$OWN/.githooks/pre-commit"
+chmod +x "$OWN/.githooks/pre-commit"
+OOUT=$(bash "$INSTALLER" --no-verify --prefix ZV --port 4495 "$OWN" 2>&1)
+grep -q "项目自己的密钥扫描" "$OWN/.githooks/pre-commit" \
+  && ok "项目自有的 pre-commit 没被 kit 覆盖" \
+  || no "kit 覆盖掉了项目自有的 pre-commit" "$(cat "$OWN/.githooks/pre-commit")"
+[ -f "$OWN/.githooks/kanban-cards.sh" ] \
+  && ok "校验逻辑仍作为 kit 文件装了进去" \
+  || no "kanban-cards.sh 没装进去" "$OOUT"
+# 不覆盖是对的，但装了不生效更糟——必须说出来
+echo "$OOUT" | grep -q "没有调用" \
+  && ok "项目自有 pre-commit 没调用卡片校验时响亮告知" \
+  || no "静默留下一个不会执行的校验" "$(echo "$OOUT" | grep -B1 -A3 'pre-commit')"
+echo "$IOUT" | grep -q "目标不是 git 仓库" \
+  && ok "目标不是 git 仓库时不碰 core.hooksPath，并说明原因" \
+  || no "非 git 目标上没说清 core.hooksPath 的处置" "$(echo "$IOUT" | grep -A2 'git hooks')"
+
+# 真 git 仓库：core.hooksPath 要接上，否则钩子只是个躺着的文件
+GT="$TMPROOT/gitinst"; mkdir -p "$GT"; git -C "$GT" init -q 2>/dev/null
+bash "$INSTALLER" --no-verify --prefix ZY --port 4498 "$GT" >/dev/null 2>&1
+chk "git 仓库目标上 core.hooksPath 接上了" \
+  "$(git -C "$GT" config --local core.hooksPath)" ".githooks"
+
+# monorepo 的子目录：rev-parse 会给出外层仓库，在那儿设 core.hooksPath=.githooks
+# 会指到一个没有这个钩子的目录，顺带把外层原有的钩子全停掉。
+MT_="$TMPROOT/mono"; mkdir -p "$MT_/packages/app"; git -C "$MT_" init -q 2>/dev/null
+MOUT=$(bash "$INSTALLER" --no-verify --prefix ZW --port 4496 "$MT_/packages/app" 2>&1)
+chk "装进 monorepo 子目录时不动外层仓库的 core.hooksPath" \
+  "$(git -C "$MT_" config --local core.hooksPath 2>/dev/null || echo '（未设）')" "（未设）"
+echo "$MOUT" | grep -q "子目录" \
+  && ok "子目录场景说清了为什么不接，并给出接法" \
+  || no "子目录场景没有说明" "$(echo "$MOUT" | grep -A3 'git hooks')"
+
+# 已经在用 husky / lefthook 的项目：**不覆盖**。静默换掉人家整套提交前检查，
+# 比不装严重得多。
+HT="$TMPROOT/huskyinst"; mkdir -p "$HT"; git -C "$HT" init -q 2>/dev/null
+git -C "$HT" config --local core.hooksPath .husky
+HOUT2=$(bash "$INSTALLER" --no-verify --prefix ZX --port 4497 "$HT" 2>&1)
+chk "core.hooksPath 已被占用时不覆盖" \
+  "$(git -C "$HT" config --local core.hooksPath)" ".husky"
+echo "$HOUT2" | grep -q "不覆盖" \
+  && ok "core.hooksPath 已被占用时响亮告知，而不是静默跳过" \
+  || no "占用时没有告知" "$(echo "$HOUT2" | grep -A3 'git hooks')"
 
 # 目标里的 kit 文件是符号链接时，cp 会跟着它写穿到项目外面。
 # 老版本整目录 rm -rf 顺带避开了；改成逐文件合并后漏掉，安全审查时才抓出来。
