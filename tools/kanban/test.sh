@@ -422,6 +422,90 @@ KANBAN_PORT=4999 $CLI stage "$CC" implementing >/dev/null 2>&1
 KANBAN_PORT=4999 $CLI ask "$CC" --text "server 关着时提的问" >/dev/null 2>&1
 chk "server 不可达时 ask 也把卡推进 blocked" \
   "$(python3 -c "import json;print(json.load(open('$CARDS/$CC.json'))['stage'])")" "blocked"
+echo "── ask --wait：就地等人回答（闭环留在同一个会话里，零 API）──"
+# 这段的价值是钉住「唤醒条件」和「超时是预期路径而不是错误」。等待本身发生在
+# CLI 进程里，不发生任何额外推理——所以它对调用方是零 API 调用，只是一次长 Bash。
+last_qid(){ python3 -c "
+import json;d=json.load(open('$CARDS/$CC.json'))
+print([c['id'] for c in d['comments'] if c['kind']=='question'][-1])"; }
+
+# ① 人回答 → 立刻返回，并推回提问前的车道（blocked 的意义是「在等人」，人答了就不该再挂着）
+$CLI stage "$CC" implementing >/dev/null 2>&1
+# last_qid 在 sleep 之后才求值，取到的才是下面这次 ask 写进去的那条 question
+( sleep 2; curl -s -o /dev/null -X POST "$BASE/api/cards/$CC/comments" \
+  -H 'Content-Type: application/json' \
+  -d "{\"kind\":\"answer\",\"text\":\"就用 90 秒\",\"re\":\"$(last_qid)\"}" ) &
+BG=$!
+T0=$(date +%s)
+WOUT=$($CLI ask "$CC" --text "超时默认设几秒？" --wait 20 2>&1)
+DT=$(( $(date +%s) - T0 ))
+wait $BG
+echo "$WOUT" | grep -q "就用 90 秒" && ok "回答正文直接打进 stdout" || no "stdout 里没有回答正文" "$WOUT"
+[ "$DT" -le 12 ] && ok "有人回答时立刻返回（${DT}s，没等满 20s）" || no "没被唤醒，等满了" "${DT}s"
+chk "回答后推回提问前的车道" "$(stage_of)" "implementing"
+
+# ② 没人回答 → 自行超时。退出码必须是 0：超时是预期路径，不是错误。
+$CLI stage "$CC" implementing >/dev/null 2>&1
+T0=$(date +%s)
+TOUT=$($CLI ask "$CC" --text "没人会答的问题" --wait 3 2>&1)
+chk "超时退出码为 0（超时是预期路径）" "$?" "0"
+DT=$(( $(date +%s) - T0 ))
+[ "$DT" -ge 3 ] && ok "确实等满了才退（${DT}s）" || no "没等就退了" "${DT}s"
+echo "$TOUT" | grep -q "停下来" && ok "超时时明说要停下来把问题带给人" || no "超时提示缺失" "$TOUT"
+chk "超时后卡片留在 blocked" "$(stage_of)" "blocked"
+
+# ③ 人下了一条新决策，也算「人给了有约束力的输入」，同样要唤醒
+$CLI stage "$CC" implementing >/dev/null 2>&1
+( sleep 2; curl -s -o /dev/null -X POST "$BASE/api/cards/$CC/comments" \
+  -H 'Content-Type: application/json' -d '{"kind":"decision","text":"这条不走回答，直接下决策"}' ) &
+BG=$!
+DOUT=$($CLI ask "$CC" --text "要不要拆成两张卡？" --wait 20 2>&1)
+wait $BG
+echo "$DOUT" | grep -q "直接下决策" && ok "新的人工 decision 也能唤醒" || no "decision 没唤醒" "$DOUT"
+
+# ④ note 不算——它按定义不具约束力，不该驱动任何东西
+$CLI stage "$CC" implementing >/dev/null 2>&1
+( sleep 2; curl -s -o /dev/null -X POST "$BASE/api/cards/$CC/comments" \
+  -H 'Content-Type: application/json' -d '{"kind":"note","text":"随手记一笔"}' ) &
+BG=$!
+NOUT=$($CLI ask "$CC" --text "note 会不会误唤醒？" --wait 5 2>&1)
+wait $BG
+echo "$NOUT" | grep -q "随手记一笔" && no "note 误唤醒了（它不具约束力，不该驱动任何东西）" "$NOUT" \
+  || ok "note 不唤醒"
+
+# ⑤ `--wait DASH-001 --text ...` 会把卡号吃成 wait 的值。不校验就报「用法」——
+#    错在参数顺序，报出来的却是用法错误，很难看懂。
+$CLI ask "$CC" --text "x" --wait abc >/dev/null 2>&1
+chk "--wait 的值不是正整数 → 退出码 1" "$?" "1"
+$CLI stage "$CC" blocked >/dev/null 2>&1
+
+echo "── cli.mjs open 看得见 ready 车道 ──"
+# 以前它只看留言（boardPending），整条 ready 车道对它是隐形的——人拖完卡
+# 还得回终端一张张点名。ready 空了一整年就是这么来的。
+RA=$(post '{"title":"可以开工的","stage":"ready"}' | jq_ "d['id']")
+RB=$(post '{"title":"前置没做完的","stage":"backlog"}' | jq_ "d['id']")
+RC=$(post '{"title":"挡着 RB 的前置","stage":"implementing"}' | jq_ "d['id']")
+curl -s -o /dev/null -X PATCH "$BASE/api/cards/$RB" -H 'Content-Type: application/json' \
+  -d "{\"dependsOn\":[\"$RC\"]}"
+# 依赖没完成时服务端不让推 ready，所以直接改文件模拟「人硬把卡拖进去了」的现场
+python3 -c "
+import json;p='$CARDS/$RB.json';d=json.load(open(p));d['stage']='ready'
+json.dump(d,open(p,'w'),ensure_ascii=False,indent=2);open(p,'a').write('\n')"
+OPENOUT=$($CLI open 2>&1)
+echo "$OPENOUT" | grep -q "$RA" && ok "open 列出可开工的 ready 卡" || no "open 漏掉可开工的卡" "$OPENOUT"
+echo "$OPENOUT" | grep -q "人已批准" && ok "open 说清楚那是人的批准" || no "open 没说是人批准的" "$OPENOUT"
+echo "$OPENOUT" | grep -q "在 ready 但还开不了工" \
+  && ok "被前置挡住的 ready 卡单独归类" || no "没区分开不了工的 ready 卡" "$OPENOUT"
+echo "$OPENOUT" | grep -q "前置未完成" && ok "说得出为什么开不了工" || no "没说原因" "$OPENOUT"
+# 被挡住的那张不能混进「可以直接开工」那一段
+python3 -c "
+import sys
+out='''$OPENOUT'''
+head=out.split('在 ready 但还开不了工')[0]
+sys.exit(0 if '$RB' not in head else 1)" \
+  && ok "被挡住的卡没混进可开工那一段" || no "被挡住的卡混进了可开工段" "$OPENOUT"
+for X in "$RA" "$RB" "$RC"; do curl -s -o /dev/null -X DELETE "$BASE/api/cards/$X"; done
+
 unset KANBAN_CARDS_DIR KANBAN_AGENT
 
 echo "── U12：坏卡片进不了 commit（pre-commit 钩子）──"

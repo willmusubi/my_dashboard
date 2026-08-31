@@ -40,6 +40,10 @@ npm run kanban
 - **新增卡片**：点任一车道底部的「+ 新增卡片」，输入标题即可（id 由 server 自动配号）。
 - **移动卡片**：直接把卡片拖到别的车道（跨栏即改变 `stage`），同栏内拖曳可调整 `order`。
 - **编辑详情**：点卡片本体开启详情面板，可改 owner／risk／agent／Readiness 勾选／Review Gates 勾选／留言等所有字段。
+- **回答 agent 的提问**：agent 提问时卡片会自动进 Blocked，卡面上标「🤖 N 需要你回复」。
+  开卡后那条留言底下有「回答」按钮——点它写字送出，提问变「已完成」，**回答正文进入 agent
+  的下一轮 context**。别用「留言」代替它：`note` 按定义不具约束力，不会被注入，
+  写了 agent 看不到，而它那边仍然显示「人还没回答」。
 - **看整体进度**：切到右上角「蓝图」分页，依 Epic → User Story 检视完成度（需先在 [`epics.json`](epics.json) 定义 Epic／User Story）。
 - 所有操作都是即时写回 `cards/*.json`，没有「存储」按钮；要复原就用 `git checkout` 还原文件再重新整理页面。
 
@@ -122,7 +126,7 @@ husky / lefthook 的项目不覆盖，只提示。钩子只校验**这次要提�
 | `links` | object | 6 种关联文件路径（featureSpec/screenSpec/mockupDecision/taskCard/verificationReport/pr），字符串、可留空 |
 | `refs` | array | repo 相对路径（string 数组，唯读显示） |
 | `evidence` | object | `{ commands: string[], findings: string[], residual: string }` |
-| `comments` | array | 留言 `{ name, time, text }` |
+| `comments` | array | 留言 `{ id, at, author, authorKind, kind, status, statusAt, re, supersedes, text }`。`kind` 见 [`board-card.md`](../../ai/skills/board-card.md) 的留言类型表；`status` 为 `open` 的那些就是「还有人在等」——人写的 open 等 agent 确认，agent 写的 open 等你回复 |
 
 文件以 2 空格缩排 + 结尾换行写入，减少 git diff 噪音。
 

@@ -1,0 +1,90 @@
+{
+  "id": "DASH-041",
+  "title": "ask --wait：agent 提问后就地等人回答，闭环留在同一个会话里（零 API）",
+  "content": "## 问题\n现在 `cli.mjs ask` 写完提问就退出，agent 停下来。人在看板 UI 上回答之后，**agent 完全不知道**——人必须回终端敲一句「继续」，才会触发 UserPromptSubmit hook 把 brief 注入。\n\n那一句「继续」是闭环上唯一缺的一环。\n\n## 为什么不由 server 去叫醒 agent\n直觉做法是让 server 在人回答时打 Anthropic API 唤起一次推理——那要付 API 费用，且是一个新会话、没有原来的上下文。\n\n`ask --wait` 不发生任何额外推理：等待是 CLI 进程在轮询文件/HTTP，整段等待都在**同一次 Bash 工具调用**里，agent 的会话原地挂起。纯订阅额度，零 API 调用。\n\n## 做法\n给 `ask` 加 `--wait [秒]`：写完提问、推 blocked 之后不退出，轮询这张卡直到出现 `kind=answer` 且 `re` 指向本次那条 question。\n\n- 收到回答：打印回答全文 + 提示「已收到回答，卡片已推回 <原车道>，继续做」，退出码 0\n- 超时：打印「等了 N 秒没等到回答，**现在停下来把问题带给人**」，退出码 0（不是错误——超时是预期路径）\n- 收到回答时把卡片推回提问前的车道（blocked 的存在意义是「在等人」，人答了就不该继续挂在那）\n\n轮询间隔 2 秒；默认超时取一个明显小于 Bash 工具上限的值。\n\n## 非目标\n- 不做 server 端推送 / WebSocket / 长轮询。\n- 不做 `claude -p` spawn（那是另一条路，成本与计费路径都不同）。\n- `--wait` **不是默认行为**。默认仍是写完就停——守在电脑前才有意义的行为不该默认打开。\n\n## 允许改的文件\n- `tools/kanban/cli.mjs`\n- `tools/kanban/test.sh`（补集成断言）\n- `tools/kanban/README.md` / `ai/skills/board-card.md`（用法说明）\n\n## 验收标准\n- `ask <ID> --text \"...\" --wait 6`，期间以人的身份 POST 一条 `answer --re <qid>` → CLI 在 2 秒内返回，stdout 含回答全文，卡片回到提问前的车道。\n- 同样命令但**不回答** → CLI 在约 6 秒后自行退出，输出明说超时且要 agent 停下来问人，退出码 0。\n- 不带 `--wait` 时行为与现在一字不差（回归）。\n- server 没开时 `--wait` 同样能工作（CLI 本来就有文件回退）。\n\n## 验证契约\n- 命令：上述三条各跑一次，贴 stdout 与耗时\n- `npm test` 全绿",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": false,
+  "createdAt": "2026-08-27",
+  "updatedAt": "2026-09-01T05:54:51+07:00",
+  "rev": 9,
+  "epic": "人机决策通道",
+  "userStory": "agent 读写通道",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 2,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "npm test → HTTP 集成 125 通过 / 0 失败（新增 10 条 ask --wait 断言）；card-store 单元 144 通过 / 0 失败",
+      "① 有人回答：ask --wait 20，后台 3 秒后 POST 一条 answer → CLI 4 秒返回，stdout 打出「人在 4 秒后回答了（c-…-bf62）：用 90 秒。」，卡片 blocked → implementing 自动推回，退出码 0",
+      "② 没人回答：ask --wait 6 → 6 秒后自行退出，输出「等了 6 秒没等到回答。**现在停下来，把这个问题带给人，不要自己假设答案。**」，退出码 0（不是错误），卡片留在 blocked",
+      "③ 不带 --wait：输出与改动前一字不差（「已提问。**现在停下来…**」），不进入等待，退出码 0",
+      "④ server 没开（lsof 确认 0 个 LISTEN）：--wait 照常轮询；磁盘上出现新回答时 4 秒内读到并返回",
+      "⑤ 集成测试覆盖：回答唤醒 / 推回原车道 / 超时退出码 0 / 超时提示含「停下来」/ 超时后留 blocked / decision 也唤醒 / note 不唤醒 / --wait 非正整数退出码 1"
+    ],
+    "findings": [
+      "默认 90 秒是盯着调用方定的，不是拍脑袋：Claude Code 的 Bash 工具默认 120 秒超时。CLI 等得比它久的话，被杀的是 CLI，agent 收到的是一个工具超时错误，而「停下来把问题带给人」这段提示反而丢了——本来最该传到的话传不到。90 留 30 秒余量。要等更久必须 --wait 500 加上把那次 Bash 调用的 timeout 一起调大。",
+      "唤醒条件是「人给了有约束力的输入」，不是「人说了话」：针对本次提问的 answer，或任何新的人工 decision。note 不算——它按定义就是「不具约束力」，不该驱动任何东西。集成测试正反两侧都钉住了。",
+      "只有「这次真的是我们把卡推进 blocked」才记 prevStage。--no-block、卡本来就在 blocked、卡是 done 这三条路都不是我们推的，等到回答也不该替人改车道；人自己把卡拖走了也不动（判据是当前 stage 还是 blocked）。",
+      "--wait 时把「已提问，现在停下来」那句话延后：等待还没开始就说停下来，自相矛盾。超时了再说。",
+      "--wait 既要能不带值又要能带值，所以不能进 BOOL_FLAGS 也不能进 VALUE_FLAGS。代价是 `ask --wait DASH-001 --text …` 会把卡号吃成 wait 的值。加了正整数校验，撞上时报的是「--wait 的值要是正整数秒，收到：DASH-001」而不是一句看不懂的「用法」。",
+      "写测试时踩了一次：裸 wait 会把 test.sh 自己在后台跑的 server 一起等，永久挂起（npm test 跑到 400 秒被打断）。改成 wait $! 记具体 PID。",
+      "「server 没开 + 人在 UI 上回答」这个组合物理上不存在（浏览器需要 server），我第一版的验收标准 ④ 写错了。拆成两条重验：④a server 没开时 --wait 正常轮询到超时不崩；④b 磁盘上出现新回答时读得到（用 appendComment + writeCard 模拟，和 server 的 POST 同一条路，不手写 JSON）。"
+    ],
+    "residual": "1) --wait 期间那次 Bash 调用是阻塞的，agent 在等待窗口里做不了别的事。不用跟：这是 --wait 的定义，也是它零 API 的代价；不确定人在不在就别用，已写进 board-card.md。重新评估的触发条件是「实际用下来发现总在干等」——那时该做的是 Stop hook 方案（不占等待、收工时才拦一下），不是把 --wait 的默认值调大。\n2) --wait 不是默认行为，agent 得自己想起来加。要有人跟（低优先）：board-card.md 已经写了用法和「人在看板前面才用」的判据，但没有任何机制强制。要不要在 hook 里塞一句提示，看实际用下来会不会忘。\n3) 三个下游项目还没升级，那边的 cli.mjs 没有 --wait。要有人跟：同 DASH-040 的第 3 条，跑 scripts/upgrade-all.sh，会动到那三个仓库的工作树。"
+  },
+  "comments": [
+    {
+      "id": "c-20260827T153414-5dc0",
+      "at": "2026-08-27T15:34:14+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-27T15:34:14+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户 2026-08-27「1.请修UI的回答按钮；最后，可以用这种方法：A. cli.mjs ask --wait」。据此建卡并开工，勾 readiness.human_approval_recorded。本卡未经 ready 车道——人在建卡的同一轮就批准了开工，批准与开工是同一个动作。product 关卡（这个问题值不值得解决）仍留给人自己勾，我不代勾。"
+    },
+    {
+      "id": "c-20260901T055451-9158",
+      "at": "2026-09-01T05:54:51+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-09-01T05:54:51+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收通过（2026-09-01）：product 关卡由人勾选，关卡齐全，卡片推进 done。DASH-040 的范围扩大（改到 card-store.mjs 的 answer 默认状态语义）也一并获准。"
+    }
+  ]
+}

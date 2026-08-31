@@ -1,0 +1,102 @@
+{
+  "id": "DASH-040",
+  "title": "看板 UI 没有「回答」按钮：人在界面上答了，agent 仍被告知没人答",
+  "content": "## 问题\n数据层与 CLI 都支持 `kind=answer` + `re=<留言id>`（`card-store.mjs` 的 `appendComment` 收到 answer 时会把对应 question 标 `done`；server 的 POST /comments 已透传 `re`），**只有浏览器界面没接上**。\n\n`index.html:987-991` 的 kind-pick 只有三个按钮：留言 / 决策 / 提问。没有「回答」，也没法带 `re`。\n\n## 后果（连锁）\n人在 UI 上回复 agent 的提问，发出去的是一条 `note`，agent 那条 question 的 status 永远停在 `open`。于是：\n- `renderCardForAgent` 在人已经答过之后，仍然告诉 agent「你自己之前提出、人还没回答的问题（不要重复问）」\n- `boardBrief` 仍然报「你提的 N 个问题人还没回答」\n\nagent 于是重复问同一个问题，或者以为自己在等一个已经到手的答案。\n\n## 范围\n只改 `tools/kanban/index.html`。不动数据层、不动 server、不动 schema。\n\n## 做法\n每条 open 且由 agent 写的 question，底下加一个「回答」按钮（结构照抄既有的「取代这条决策」/ supersede 模式）。点了进入回答模式：kind 锁成 answer、显示正在回答哪条、送出时带 `re`。\n\n前端 `addComment()` 目前只透传 `supersedes`，要一并透传 `re`。\n\n## 非目标\n- 不改 comment schema。\n- 不做「回答人写的 question」的入口（人回答自己提的问题没有意义；agent 回答走 CLI）。\n- 不做富文本、不做 @ 提及。\n\n## 验收标准\n- 一条 agent 写的 open question，UI 上出现「回答」按钮；人写的 question 与其他 kind 不出现。\n- 点「回答」→ 写字 → 送出后：该 question 的 status 变 `done`，新留言 kind 是 `answer` 且 `re` 指向它。\n- 送出后 `cli.mjs show <ID>` 不再把这条列进「你自己之前提出、人还没回答的问题」。\n\n## 验证契约\n- 建一张测试卡 → 用 CLI 以 agent 身份 ask → 模拟 UI 的 POST（带 kind=answer + re）→ 断言 question 变 done 且 renderCardForAgent 不再列它\n- `npm test` 全绿",
+  "stage": "done",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": false,
+  "createdAt": "2026-08-27",
+  "updatedAt": "2026-09-01T05:54:51+07:00",
+  "rev": 11,
+  "epic": "人机决策通道",
+  "userStory": "留言结构化",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": true,
+    "ui": true,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "npm test → card-store 单元 144 通过 / 0 失败（新增 11 条：answer 方向性默认状态、renderCardForAgent 渲染、brief 归属）；HTTP 集成 115→125 通过 / 0 失败",
+      "红→绿验证：把 defaultCommentStatus 里 answer 那一行删掉（退回旧行为）→ 6 条断言立刻红（默认 open / liveHumanItems 取得到 / 渲染出正文 / 带出原问题 / 不再谎报没有待处理项 / 出现在 brief 里）→ 还原 → 144 全绿",
+      "npm run check → governance kit check passed",
+      "node tools/kanban/cli.mjs validate → 卡片文件校验通过（41 张）",
+      "UI 端到端（Chrome，DASH-042 临时卡）：agent ask → 卡进 Blocked、卡面「🤖 1 需要你回复」→ 开卡，那条提问下出现「回答」按钮 → 点它进入回答模式（kind 按钮整排换成「回答提问 f840 ×」，placeholder 跟着变）→ 写字送出 → 提问变「提问·已完成·18:09」、回答标「回答·已送出·待 AI 读」、卡面徽章翻转成「💬 1 待 AI 读」",
+      "agent 侧复验：cli.mjs show 输出「人对你先前提问的回答（回答就是决策，在这张卡上一直有效；ack 表示你读到了）」+ 原问题 + 回答正文；session-board-brief.mjs 报「1 条人工决策/回答/提问待你确认」"
+    ],
+    "findings": [
+      "范围扩了一倍，是实测逼出来的。原卡只写「改 index.html」。补完按钮后实测发现：人答完，agent 侧 cli.mjs show 说的是「目前没有待处理的人工决策或提问」，hook 的 brief 空输出——回答正文一个字都没进 context。只修 UI 是净负面：agent 从「被误告知没人答」变成「以为问题不存在了」。",
+      "根因在 renderCardForAgent 只渲染三类（人的 live decision、人的 live question、agent 的 open question），加上 answer 一律 status=done 导致 liveHumanItems 取不到。两处都要改，缺一处都不通。",
+      "answer 的默认状态改成看方向：人回答 agent → open（agent 必须据此行动），agent 回答人 → done。这不是新机制，是把 answer 放回 OPEN_BY_DEFAULT 注释本来的判据（「需要后续处理的类型默认 open」）。放回去之后 liveHumanItems / boardPending / boardBrief / UI 的 statusLabel 全套现有机制自动生效。",
+      "agent 写的 answer 不能一起 open：boardBrief 按 authorKind 分方向，agent 写的 open 会被说成「你提的 N 个问题人还没回答」——那是一条回答不是提问，措辞正好说反。所以方向性是必需的，不是洁癖。",
+      "ack 之后仍然注入，和 decision 同一个道理：「用方案 B」约束的是整张卡的余生，不是一轮。我第一版把提示写成「读完 ack 掉，否则每轮都会再送给你」，实测发现 ack 后照样注入——提示是错的，改了提示而不是改行为。",
+      "渲染回答时必须把原问题一起带出来（「↳ 你问的是：…」）。只给「设 90 秒」，agent 不知道在答什么。",
+      "closeModal 要清 answeringId，否则在 A 卡进入回答模式、关掉、再开 B 卡，送出的 answer 会带着 A 卡的 re，服务端找不到那条 question，静默悬空。supersedingId 有同样的既有泄漏，不在本卡范围内，已在代码注释和 Todo 里点名，没顺手改。"
+    ],
+    "residual": "1) supersedingId 的跨卡泄漏是既有 bug（closeModal 不清它），和本卡修的是同一类问题但不在范围内。要有人跟：决定要不要单开一张卡，一行代码。不修的后果是「取代决策」的 supersedes 可能悬空——静默、无报错。\n2) UI 验证用的是临时卡 DASH-042，验完已删（curl DELETE，dependsOnCleaned 为空）。不用跟。\n3) 三个下游项目（medical_tourism / real_rpg / three_kingdoms_traveler）还没升级到这版。要有人跟：它们的看板 UI 目前仍然没有「回答」按钮，人在那边答了 agent 收不到。跑 scripts/upgrade-all.sh 即可，但会动到那三个仓库的工作树——上次 DASH-038 你的指示是不处理下游，所以这次我没跑。"
+  },
+  "comments": [
+    {
+      "id": "c-20260827T153414-9f28",
+      "at": "2026-08-27T15:34:14+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-08-27T15:34:14+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户 2026-08-27「1.请修UI的回答按钮；最后，可以用这种方法：A. cli.mjs ask --wait」。据此建卡并开工，勾 readiness.human_approval_recorded。本卡未经 ready 车道——人在建卡的同一轮就批准了开工，批准与开工是同一个动作。product 关卡（这个问题值不值得解决）仍留给人自己勾，我不代勾。"
+    },
+    {
+      "id": "c-20260827T174456-b57c",
+      "at": "2026-08-27T17:44:56+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-08-27T17:44:56+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "范围扩大，实测驱动：只加 UI 按钮是净负面。实测（DASH-042 临时卡）——agent 提问 → 模拟 UI 送出 kind=answer+re → question 确实被标 done，但 cli.mjs show 输出「目前没有待处理的人工决策或提问」，hook 的 brief 空输出，回答正文一个字都没进 agent 的 context。根因：renderCardForAgent 只渲染人的 live decision / 人的 live question / agent 的 open question，人写的 answer 不在其中；且 answer 默认 status=done，liveHumanItems 取不到。所以范围从「只改 index.html」扩到 card-store.mjs。不扩的话，agent 会从「被误告知没人答」变成「以为问题不存在了」，比修之前更糟。"
+    },
+    {
+      "id": "c-20260901T055451-e79d",
+      "at": "2026-09-01T05:54:51+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-09-01T05:54:51+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收通过（2026-09-01）：product 关卡由人勾选，关卡齐全，卡片推进 done。DASH-040 的范围扩大（改到 card-store.mjs 的 answer 默认状态语义）也一并获准。"
+    }
+  ]
+}

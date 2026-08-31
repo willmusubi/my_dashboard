@@ -11,6 +11,29 @@
 3. **没有证据不算完成。** 证据写进卡片的 `evidence` 字段，不要只留在聊天里
    ——聊天会被关掉，卡片不会。
 
+## 拿哪一张：ready 车道就是人的批准
+
+**人把卡拖进 `ready`，就是「这张可以开工了」。** 那是看板上唯一一个纯粹表示批准的
+手势，你不需要再问一次「这张要做吗」。
+
+```bash
+node tools/kanban/cli.mjs open   # 列出可开工的 ready 卡（已按构建顺序排好）
+```
+
+**看到 ready 栏有可开工的卡，就从第一张起依次做完**，一次一张，做完一张再拿下一张。
+不要问「先做哪张」——顺序是 `epics.json` 的 Epic 定义顺序 → `order`，已经排好了。
+不要一次全推进 `implementing`（WIP 上限 3 就是拦这个的）。
+
+**你不得自己把卡推进 `ready`。** 从 `backlog` 到 `ready` 是人的批准动作，你替他推了，
+这条车道就退化成一个零停留的过渡态——它空了一整年正是因为没人守住这一条。
+你只推 `ready → implementing → verify → done`。
+
+`readiness` 7 项不是开工的门槛：人拖进 ready 就是批准了，缺项你补上，不要停下来问。
+真正拦住一张 ready 卡的只有两件事，`cli.mjs open` 会直说：
+
+- `dependsOn` 里还有没 `done` 的卡（硬拦，服务端会回 400）——去做前置。
+- 卡上还挂着你自己提的、人没回答的问题——那张卡在等人，别动它。
+
 ## 开工前
 
 ```bash
@@ -173,6 +196,23 @@ node tools/kanban/cli.mjs ask <ID> --text "手机版要不要保留 drawer？"
   `comment --kind blocker`（不换车道）；或 `ask ... --no-block`。
   两者的区别是**你会不会停下来**——会停就该进 blocked。
 
+- **人就在看板前面时**：加 `--wait`，就地等回答，不用把球传出去再传回来。
+
+  ```bash
+  node tools/kanban/cli.mjs ask <ID> --text "..." --wait      # 默认等 90 秒
+  node tools/kanban/cli.mjs ask <ID> --text "..." --wait 500  # 等更久
+  ```
+
+  人在界面上点「回答」（或下一条新决策）就立刻返回，回答正文直接打进 stdout，
+  卡片自动推回提问前的车道。等不到就超时退出（退出码 0），你照常停下来问人。
+
+  **整段等待都在这一次工具调用里，不发生任何额外推理**——对 Claude Code 而言
+  是零 API 调用，只是一次长 Bash。默认 90 秒是盯着 Bash 工具的 120 秒默认超时定的：
+  等得比它久，被杀的是 CLI，上面那段提示反而传不到你手上。`--wait 500` 要连同
+  那次 Bash 调用的 timeout 一起调大（上限 600 秒）。
+
+  **不确定人在不在，就别用。** 干等 90 秒换不到东西，不如直接把问题交回去。
+
 `dependsOn` 造成的阻塞不走这条路：那个由服务端硬拦（前置没 `done` 就推不到
 `ready` 之后），撞到了说明前置真的没做完，去做前置。
 
@@ -183,13 +223,17 @@ node tools/kanban/cli.mjs ask <ID> --text "手机版要不要保留 drawer？"
 | `decision` | **只有人** | 必须遵守的决定 | `open` |
 | `question` | 人 / agent | 等对方回答 | `open` |
 | `blocker` | 人 / agent | 卡住了 | `open` |
-| `answer` | 人 / agent | 回答某条 question（带 `--re`） | `done` |
+| `answer` | 人 / agent | 回答某条 question（带 `--re`） | 人写＝`open`；agent 写＝`done` |
 | `progress` | 人 / agent | 进度记录 | `done` |
 | `evidence` | 人 / agent | 验证证据 | `done` |
 | `note` | 人 / agent | 随手记，不具约束力 | `done` |
 
 状态流转：`open` →（agent 确认）`acked` →（做完）`done`；
 或被新决策取代 → `superseded`。留言文本**不可变**，修正靠发新留言 + `supersedes`。
+
+`answer` 是唯一要看方向的：**人回答你，就是一条决策**——它和 `decision` 一样进入
+你每一轮的 context，一样要 `ack`，一样在这张卡上持续有效（ack 只是留痕，不停止注入）。
+反过来你回答人，人在界面上看得见就够了，所以直接 `done`。
 
 ## 卡片的整卡写入
 

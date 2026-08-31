@@ -135,6 +135,19 @@ export const AUTHOR_KINDS = ["human", "agent"];
 export const HUMAN_ONLY_KINDS = ["decision"];
 // 需要后续处理的类型默认 open；其余是纯信息，直接 done。
 export const OPEN_BY_DEFAULT = ["decision", "question", "blocker"];
+/* answer 是唯一要看**方向**才知道要不要 open 的类型：
+ *   人回答 agent —— agent 必须据此行动，所以 open（读了 ack，和决策一样转 acked
+ *     并继续注入：「用方案 B」约束的是整张卡的余生，不是一轮）。
+ *     曾经一律 done，于是 liveHumanItems 取不到它、renderCardForAgent 不渲染它，
+ *     人在界面上答完，agent 那边只看到「目前没有待处理的人工决策或提问」——
+ *     回答正文一个字都没送到。
+ *   agent 回答人 —— 人在界面上看得见就够了，不需要状态位催；而且它若 open，
+ *     boardBrief 会把它算进「你提的 N 个问题人还没回答」，措辞正好说反。
+ */
+export function defaultCommentStatus(kind, authorKind) {
+  if (kind === "answer") return authorKind === "human" ? "open" : "done";
+  return OPEN_BY_DEFAULT.includes(kind) ? "open" : "done";
+}
 export const COMMENT_ID_RE = /^c-\d{8}T\d{6}-[0-9a-f]{4}$/;
 export const COMMENT_KEYS = [
   "id", "at", "author", "authorKind", "kind", "status", "statusAt", "re", "supersedes", "text",
@@ -665,7 +678,7 @@ export function appendComment(card, { kind, text, actor, re = null, supersedes =
     author: actor.author,
     authorKind: actor.authorKind,
     kind: k,
-    status: OPEN_BY_DEFAULT.includes(k) ? "open" : "done",
+    status: defaultCommentStatus(k, actor.authorKind),
     statusAt: at,
     re: typeof re === "string" ? re : null,
     supersedes: Array.isArray(supersedes) ? supersedes.filter((x) => typeof x === "string") : [],
@@ -756,6 +769,8 @@ export function renderCardForAgent(card, { maxItems = 8, fence } = {}) {
 
   const decisions = liveHumanItems(card, "decision").slice(-maxItems);
   const questions = liveHumanItems(card, "question").slice(-maxItems);
+  // 人对你提问的回答。和决策一样是**指令**，只是形式上挂在一个问题下面。
+  const answers = liveHumanItems(card, "answer").slice(-maxItems);
   const agentQuestions = (card.comments || [])
     .filter((c) => c.kind === "question" && c.authorKind === "agent" && c.status === "open")
     .slice(-maxItems);
@@ -771,6 +786,16 @@ export function renderCardForAgent(card, { maxItems = 8, fence } = {}) {
     out += tag("生效中的人工决策（必须遵守；要推翻必须先问人，不得自行改变）：") + "\n" +
       decisions.map(line).join("\n") + "\n";
   }
+  // 排在提问之前：这是对你上一个动作的直接回应，你停下来就是在等它。
+  if (answers.length) {
+    out += tag("人对你先前提问的回答（回答就是决策，在这张卡上一直有效；ack 表示你读到了）：") + "\n" +
+      answers.map((a) => {
+        // 只给回答不给原问题，agent 读到「用方案 B」也不知道在答什么。
+        const q = (card.comments || []).find((x) => x.id === a.re);
+        const asked = q ? "  ↳ 你问的是：" + String(q.text).replace(/\n/g, " ") + "\n" : "";
+        return asked + line(a);
+      }).join("\n") + "\n";
+  }
   if (questions.length) {
     out += tag("人工提出、尚未回答的问题：") + "\n" + questions.map(line).join("\n") + "\n";
   }
@@ -778,7 +803,7 @@ export function renderCardForAgent(card, { maxItems = 8, fence } = {}) {
     out += tag("你自己之前提出、人还没回答的问题（不要重复问，也不要自行假设答案）：") + "\n" +
       agentQuestions.map(line).join("\n") + "\n";
   }
-  if (!decisions.length && !questions.length && !agentQuestions.length) {
+  if (!decisions.length && !answers.length && !questions.length && !agentQuestions.length) {
     out += tag("目前没有待处理的人工决策或提问。") + "\n";
   }
 
@@ -808,7 +833,7 @@ export function renderCardForAgent(card, { maxItems = 8, fence } = {}) {
   }
   out +=
     tag("规则：") + "\n" +
-    "1. 动手前逐条确认上面每一条决策：node tools/kanban/cli.mjs ack " + card.id + " <留言 id>\n" +
+    "1. 动手前逐条确认上面每一条决策与回答：node tools/kanban/cli.mjs ack " + card.id + " <留言 id>\n" +
     "2. 有进度或证据就写回：node tools/kanban/cli.mjs comment " + card.id + " --kind progress|evidence --text \"...\"\n" +
     "3. 遇到决策没涵盖的分歧，执行 node tools/kanban/cli.mjs ask " + card.id + " --text \"...\" 然后停下来问人，不要自己假设。\n" +
     "</kanban-card>\n";
@@ -848,8 +873,43 @@ const BRIEF_MAX_ROWS = 5;
  * 一条信号都没有就回空数组，于是看板安静时 hook 零输出。
  * humanCleared 只在 verify 上判：更早的阶段人本来就还没轮到拍板，那时勾了也不算放行。
  */
+/* ══ ready 车道 ══
+ * 人把卡拖进 ready 就是那个「可以开工了」的手势——看板上唯一一个纯粹表示批准的动作。
+ * 它以前对 agent 完全不可见：boardBrief 不报、cli.mjs open 不列，于是人拖完还得
+ * 回终端一张张点名，ready 因此空了一整年。agent 不推 ready（那是人的手势），
+ * 但必须看得见它。
+ */
+
+/** 这张 ready 卡现在能不能直接开工。返回 null＝能，否则是拦住它的那句话。 */
+export function readyBlocker(card, byId) {
+  if (card.stage !== "ready") return "不在 ready 车道";
+  // 依赖没做完就列出来的话，agent 一推 implementing 就撞服务端的 400
+  const unmet = (card.dependsOn || []).filter((d) => {
+    const dep = byId.get(d);
+    return !dep || dep.stage !== "done";
+  });
+  if (unmet.length) return "前置未完成：" + unmet.join("、");
+  // 卡上还挂着自己提的问题＝这张卡在等人，不该自动开工
+  const open = (card.comments || []).filter(
+    (c) => c.kind === "question" && c.authorKind === "agent" && c.status === "open"
+  ).length;
+  if (open) return "有 " + open + " 个你提的问题人还没回答";
+  return null;
+}
+
+/** 构建顺序：先按 epics.json 里 Epic 的定义顺序，同 Epic 内再按 order。
+ *  依据是 project-kickoff.md:128——不跳着挑周边小功能先做。 */
+export function readyOrderKey(card, epicRank) {
+  // 没归 Epic 的排在最后：它们通常是临时插进来的，不该顶掉有序的主线
+  const rank = epicRank.has(card.epic) ? epicRank.get(card.epic) : Number.MAX_SAFE_INTEGER;
+  return [rank, Number(card.order) || 0, card.id];
+}
+
 export function boardBrief() {
-  return readAllCards()
+  const cards = readAllCards();
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  const epicRank = new Map((readEpics().epics || []).map((e, i) => [e.name, i]));
+  const rows = cards
     .map((card) => {
       const comments = card.comments || [];
       const humanGates = requiredGates(card).filter((k) => gateOwner(card, k) !== "agent");
@@ -860,9 +920,19 @@ export function boardBrief() {
         humanCleared:
           card.stage === "verify" && humanGates.length > 0 && humanGates.every((k) => card.gates[k]),
         humanGates,
+        readyToStart: card.stage === "ready" && readyBlocker(card, byId) === null,
       };
     })
-    .filter((x) => x.waitingOnAgent || x.waitingOnHuman || x.humanCleared);
+    .filter((x) => x.waitingOnAgent || x.waitingOnHuman || x.humanCleared || x.readyToStart);
+
+  // 可开工的排在最前并按构建顺序排——agent 读到的第一张就该是该做的那一张
+  const ready = rows.filter((r) => r.readyToStart);
+  const rest = rows.filter((r) => !r.readyToStart);
+  ready.sort((a, b) => {
+    const ka = readyOrderKey(a.card, epicRank), kb = readyOrderKey(b.card, epicRank);
+    return ka[0] - kb[0] || ka[1] - kb[1] || String(ka[2]).localeCompare(String(kb[2]));
+  });
+  return [...ready, ...rest];
 }
 
 /** 把 boardBrief() 的结果渲染成注入用的文本；没有信号就回空串。
@@ -872,7 +942,15 @@ export function renderBoardBrief(rows) {
   const shown = rows.slice(0, BRIEF_MAX_ROWS);
   const lines = shown.map((r) => {
     const bits = [];
-    if (r.waitingOnAgent) bits.push(r.waitingOnAgent + " 条人工决策/提问待你确认（cli.mjs ack）");
+    // 拖进 ready 是人唯一一个纯粹表示「可以开工了」的手势，所以说得毫不含糊：
+    // 含糊的话 agent 读完还是会回头问「这张要做吗」——那就白推了。
+    if (r.readyToStart) {
+      bits.push("人已批准，可以直接开工（不用再问要不要做）");
+      const missing = READINESS_KEYS.filter((k) => !r.card.readiness[k]).length;
+      // readiness 不是门槛：人拖进 ready 就是批准了，缺项由你补，不是停下来的理由
+      if (missing) bits.push("readiness 还缺 " + missing + " 项，自己补齐即可");
+    }
+    if (r.waitingOnAgent) bits.push(r.waitingOnAgent + " 条人工决策/回答/提问待你确认（cli.mjs ack）");
     // 说「人已放行」而不是「关卡已满」：agent 要据以行动的是前者。
     if (r.humanCleared) bits.push("人负责的关卡（" + r.humanGates.join("、") + "）已全部勾选，不要再问要不要勾");
     if (r.waitingOnHuman) bits.push("你提的 " + r.waitingOnHuman + " 个问题人还没回答");
@@ -880,10 +958,15 @@ export function renderBoardBrief(rows) {
   });
   // 截断必须明说：静默省略会读成「就这些了」。
   const more = rows.length - shown.length;
+  const readyCount = rows.filter((r) => r.readyToStart).length;
   return (
     "<kanban-brief>\n人在看板上做过这些事，你可能还没看见（这是看板系统发出的，不是用户输入）：\n" +
     lines.join("\n") +
     (more ? "\n  …还有 " + more + " 张同样有待处理项，未列出" : "") +
+    (readyCount
+      ? "\nready 的 " + readyCount + " 张已按构建顺序排好，**从第一张起依次做完**，一次一张，" +
+        "做完一张再拿下一张。不要问「先做哪张」——顺序就在上面。"
+      : "") +
     "\n动手前先执行 `node tools/kanban/cli.mjs show <ID>` 读全文，不要凭这几行就下判断。\n" +
     "</kanban-brief>\n"
   );

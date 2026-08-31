@@ -122,6 +122,118 @@ console.log("── answer 关闭 question ──");
   eq("被回答后变 done", c.comments.find((x) => x.id === q.id).status, "done");
 }
 
+/* 人在界面上点「回答」之后，agent 到底看不看得到那段正文。
+   曾经：answer 一律 done → liveHumanItems 取不到 → renderCardForAgent 不渲染它，
+   于是人答完，agent 那边只看到「目前没有待处理的人工决策或提问」，回答正文
+   一个字都没送到。下面每一条都是那个缺陷的具体表现，缺一条就漏得回去。 */
+console.log("── 人写的 answer 要进 agent 的 context ──");
+{
+  const c = blank();
+  const q = store.appendComment(c, { kind: "question", text: "超时默认设几秒？", actor: AGENT }).comment;
+  const a = store.appendComment(c, { kind: "answer", text: "设 90 秒。", actor: HUMAN, re: q.id }).comment;
+
+  eq("人回答 agent → 默认 open（agent 必须据此行动）", a.status, "open");
+  eq("liveHumanItems 取得到它", store.liveHumanItems(c, "answer").length, 1);
+
+  const txt = store.renderCardForAgent(c, { fence: "deadbeef" });
+  truthy("渲染出回答正文", txt.includes("设 90 秒。"));
+  // 只给回答不给原问题，agent 读到「设 90 秒」也不知道在答什么
+  truthy("同时带出被回答的那个问题", txt.includes("你问的是：超时默认设几秒？"));
+  truthy("不再谎报「没有待处理的人工决策或提问」", !txt.includes("目前没有待处理的人工决策或提问"));
+
+  // 回答就是决策，约束的是整张卡的余生而不是一轮，所以 ack 只是留痕、不停止注入
+  store.setCommentStatus(c, a.id, "acked", "agent");
+  truthy("ack 之后仍然注入（和决策同一个道理）",
+    store.renderCardForAgent(c, { fence: "deadbeef" }).includes("设 90 秒。"));
+
+}
+console.log("── 人写的 answer 要出现在 SessionStart 的 brief 里 ──");
+{
+  // boardBrief 读的是磁盘，所以这段必须真写盘，用独立 id 免得和别的段互相干扰
+  const c = blank(store.formatId(940));
+  const q = store.appendComment(c, { kind: "question", text: "要不要拆两份钩子？", actor: AGENT }).comment;
+  store.appendComment(c, { kind: "answer", text: "要拆。", actor: HUMAN, re: q.id });
+  store.writeCard(c);
+  const row = store.boardBrief().find((r) => r.card.id === c.id);
+  truthy("这张卡出现在 brief 里", !!row);
+  eq("算的是「等 agent 确认」那一侧，不是「等人回答」", [row.waitingOnAgent, row.waitingOnHuman], [1, 0]);
+  truthy("brief 措辞把回答一起点名",
+    store.renderBoardBrief([row]).includes("人工决策/回答/提问"));
+  fs.rmSync(path.join(store.CARDS_DIR, c.id + ".json"), { force: true });
+}
+console.log("── agent 写的 answer 不能 open ──");
+{
+  const c = blank();
+  const q = store.appendComment(c, { kind: "question", text: "这里为什么绕过校验？", actor: HUMAN }).comment;
+  const a = store.appendComment(c, { kind: "answer", text: "历史遗留，已补上。", actor: AGENT, re: q.id }).comment;
+  // 它若 open，boardBrief 会按 authorKind 把它算进「你提的 N 个问题人还没回答」——
+  // 那是一条回答，不是提问，措辞正好说反
+  eq("agent 回答人 → 默认 done", a.status, "done");
+  eq("人提的那条问题被关掉", c.comments.find((x) => x.id === q.id).status, "done");
+}
+
+/* 人拖卡进 ready 是看板上唯一一个纯粹表示「可以开工了」的手势。它以前对 agent
+   完全不可见（boardBrief 只看留言），于是人拖完还得回终端一张张点名。 */
+console.log("── ready 车道要推到 agent 眼前 ──");
+{
+  const mk = (n, over) => {
+    const c = { ...blank(store.formatId(n)), ...over };
+    store.writeCard(c);
+    return c;
+  };
+  const clean = [];
+  const done = mk(950, { stage: "done", title: "前置" });                 clean.push(done);
+  const go = mk(951, { stage: "ready", title: "可开工", dependsOn: [done.id] }); clean.push(go);
+  const dep = mk(952, { stage: "ready", title: "前置没做完", dependsOn: [store.formatId(999)] }); clean.push(dep);
+  const asking = mk(953, { stage: "ready", title: "在等人回答" });        clean.push(asking);
+  store.appendComment(asking, { kind: "question", text: "这个要问人", actor: AGENT });
+  store.writeCard(asking);
+  const notReady = mk(954, { stage: "backlog", title: "还没批准" });      clean.push(notReady);
+
+  const brief = store.boardBrief();
+  const ids = brief.filter((r) => r.readyToStart).map((r) => r.card.id);
+  eq("只有真的能开工的那张被列为 readyToStart", ids, [go.id]);
+
+  const byId = new Map(clean.map((c) => [c.id, c]));
+  truthy("依赖未完成的说得出原因", /前置未完成/.test(store.readyBlocker(dep, byId)));
+  truthy("有 open 提问的说得出原因", /问题人还没回答/.test(store.readyBlocker(asking, byId)));
+  eq("不在 ready 的不算", store.readyBlocker(notReady, byId), "不在 ready 车道");
+
+  const txt = store.renderBoardBrief(brief);
+  truthy("brief 说人已批准、可以直接开工", txt.includes("人已批准，可以直接开工"));
+  truthy("brief 要求依次做完，不要回头问先做哪张", txt.includes("依次做完"));
+  // readiness 不是门槛：缺项要提示，但不能因此不列出来
+  truthy("readiness 缺项只提示不拦", txt.includes("readiness 还缺"));
+
+  for (const c of clean) fs.rmSync(path.join(store.CARDS_DIR, c.id + ".json"), { force: true });
+  // 安静时零 token 成本这条不能破
+  eq("ready 栏空了就一个字都不说", store.renderBoardBrief(store.boardBrief().filter((r) => r.readyToStart)), "");
+}
+console.log("── ready 的构建顺序：Epic 定义顺序 → order ──");
+{
+  const names = (store.readEpics().epics || []).map((e) => e.name);
+  if (names.length < 2) {
+    console.log("  ⏭  跳过：epics.json 里不足两个 Epic");
+  } else {
+    const mk = (n, epic, order) => {
+      const c = { ...blank(store.formatId(n)), stage: "ready", epic, order };
+      store.writeCard(c);
+      return c;
+    };
+    // 故意让「后面的 Epic + 小 order」排在前面写入，纯按 order 排会得到错的顺序
+    const late = mk(961, names[1], 1);
+    const earlyB = mk(962, names[0], 9);
+    const earlyA = mk(963, names[0], 2);
+    const orphan = mk(964, "根本不存在的 Epic", 1);
+    const got = store.boardBrief().filter((r) => r.readyToStart).map((r) => r.card.id);
+    eq("Epic 顺序优先于 order，没归 Epic 的垫底",
+      got, [earlyA.id, earlyB.id, late.id, orphan.id]);
+    for (const c of [late, earlyB, earlyA, orphan]) {
+      fs.rmSync(path.join(store.CARDS_DIR, c.id + ".json"), { force: true });
+    }
+  }
+}
+
 console.log("── status 转换权限 ──");
 {
   const c = blank();

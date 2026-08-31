@@ -1,0 +1,75 @@
+{
+  "id": "DASH-043",
+  "title": "Ready 车道对 agent 不可见：人推了卡进去，agent 一张都看不到",
+  "content": "## 问题\n`ready` 的语义是「人已批准、可以开工」，人拖卡进去就是那个批准手势。但 **agent 完全看不见这个手势**：\n\n- `boardBrief()`（SessionStart + UserPromptSubmit 两个 hook 的数据源）只报三类卡：有待确认的人工留言、有等人回答的提问、`verify` 且人工关卡已放行。`ready` 栏一张都不报。\n- `cli.mjs open` 只列「有待处理的人工决策或提问」的卡，同样漏掉整条 ready 车道。\n\n所以人拖完卡，还得回终端一张张点名。ready 空了一整年正是因为这个——`project-kickoff.md:128` 早就写了「每次只处理一张状态为 ready 的任务卡」，但没有任何机制把那条车道推到 agent 眼前。和 DASH-039 修的是同一类缺陷。\n\n## 要什么\n人把卡拖进 ready = 批准开工。之后 agent 接手时，**自己看得到 ready 栏里所有可执行的卡，并依次做完**，不用人一张张说。\n\n「可执行」= 同时满足：\n- `stage === \"ready\"`\n- `dependsOn` 列出的卡全部 `done`\n- 卡上没有 open 的 agent question（有的话说明这张卡在等人回答，不该自动开工）\n\n顺序沿用 `project-kickoff.md:128`：先按 `epics.json` 里 Epic 的定义顺序，同 Epic 内再按 `order` 由小到大。不跳着挑周边小功能先做。\n\n## 范围\n- `card-store.mjs`：`boardBrief()` 增加一类 `readyToStart`；`renderBoardBrief()` 相应措辞；排序辅助。\n- `cli.mjs`：`open` 子命令一并列出可执行的 ready 卡。\n- `ai/skills/board-card.md`：写清楚「人推 ready、agent 不推 ready」和「看到 ready 就依次做」两条规则。\n- 测试：`test-store.mjs` + `test.sh`。\n\n## 非目标\n- **不做并行执行。** agent 一次实作一张已批准的卡（`AGENTS.md`），依次做完，不是一次全推进 implementing。`implementing` 的 WIP 上限 3 也不该被绕过。\n- **不把 readiness 当门槛。** 人拖到 ready 就是批准了；readiness 7 项是给人自己看的检查表，缺项就在输出里提示，但不因此拒绝执行——那等于 agent 否决人的批准。\n- 不做自动推进 stage（agent 拿起一张卡时照常自己推 implementing）。\n- 不碰 `ready` 的服务端语义（`ADVANCED_STAGES` 的依赖门禁不动）。\n\n## 验收标准\n- ready 栏有一张无阻塞的卡时，`session-board-brief.mjs` 的输出里点名它，并说明「人已批准，可以直接开工」。\n- 依赖没做完的 ready 卡**不**被列为可执行（列出来会让 agent 撞服务端的 400）。\n- 卡上有 open 的 agent question 时不被列为可执行。\n- 多张可执行时，输出顺序是 Epic 定义顺序 → order。\n- ready 栏空、或全部被阻塞时，brief 不多说一个字（安静时零 token 成本这条不能破）。\n\n## 验证契约\n- 命令：造 4 张卡（可执行 / 依赖未完成 / 有 open 提问 / 不在 ready），断言只有第一张被列出\n- 排序：跨 Epic + 同 Epic 内乱序的 order，断言输出顺序\n- `npm test` 全绿",
+  "stage": "verify",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": false,
+  "createdAt": "2026-09-01",
+  "updatedAt": "2026-09-01T06:05:44+07:00",
+  "rev": 6,
+  "epic": "人机决策通道",
+  "userStory": "强制注入",
+  "track": "backend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "npm test → card-store 单元 153 通过 / 0 失败（新增 9 条：readyToStart 判定、readyBlocker 三种原因、brief 措辞、readiness 不当门槛、安静时零输出、Epic→order 排序）；HTTP 集成 130 通过 / 0 失败（新增 5 条 cli.mjs open）",
+      "npm run check → governance kit check passed",
+      "端到端：建一张 stage=ready 的真卡（DASH-044）→ session-board-brief.mjs 输出「DASH-044（ready）人已批准，可以直接开工（不用再问要不要做）；readiness 还缺 7 项，自己补齐即可」+「ready 的 1 张已按构建顺序排好，从第一张起依次做完，一次一张」",
+      "反向验证：把那张卡退回 backlog → brief 完全安静（零输出），安静时零 token 成本这条没破"
+    ],
+    "findings": [
+      "缺口不在文档而在机制。project-kickoff.md:128 早就写了「每次只处理一张状态为 ready 的任务卡」，但 boardBrief() 只报三类（待确认留言 / 等人回答的提问 / verify 且人工关卡放行），cli.mjs open 只看留言——整条 ready 车道对 agent 是隐形的。人拖完卡还得回终端一张张点名，所以那条车道空了一整年。和 DASH-039 是同一类缺陷：规则写下来了，没有任何机制执行它。",
+      "「可执行」只用两个硬条件：dependsOn 全 done（不然 agent 一推 implementing 就撞服务端 400）、卡上没有 open 的 agent question（有的话这张卡在等人）。readiness 刻意不作为门槛——人拖进 ready 就是批准了，让 agent 因为 readiness 没勾满而拒绝执行，等于 agent 否决人的批准。缺项在输出里提示，仅此而已。",
+      "被拦住的 ready 卡要单独列出来并说明原因。只列可开工的那些，人在看板上看见卡停在 ready 却没人动，无从知道为什么。cli.mjs open 因此分三段：可开工 / 在 ready 但开不了工 / 有待处理项。",
+      "排序按 project-kickoff.md:128：Epic 定义顺序优先于 order，没归 Epic 的垫底（临时插进来的卡不该顶掉有序的主线）。测试故意造了「后面的 Epic + 小 order」，纯按 order 排会得到错的顺序。",
+      "措辞下了功夫：含糊的话 agent 读完还是会回头问「这张要做吗」，那就白推了。所以是「人已批准，可以直接开工（不用再问要不要做）」和「从第一张起依次做完，一次一张」——后半句挡的是另一个失败模式：一次把 ready 全推进 implementing，绕过 WIP 上限 3。",
+      "自己犯了一次要防的错：建 DASH-044 时直接写 stage=ready 拿来做端到端验证，而我在同一轮刚把「agent 不得自己推 ready」写进 board-card.md。验证完退回 backlog 并在卡上留了说明。"
+    ],
+    "residual": "1) 「agent 不得自己推 ready」只写在 board-card.md 里，服务端没有强制力（agent 一个 PATCH 就能推）。要不要跟由你定：加硬拦的代价是 agent 再也不能修正自己误推的卡，而这条规则的违反在看板上一眼可见（卡自己跳进 ready）。我倾向不加。重新评估的触发条件——实际发生了 agent 自己推 ready 而人没察觉。\n2) 「依次做完」是措辞约束，不是机制。agent 仍可能一次拿多张。不用跟：WIP 上限 3 在界面上会变红，且 AGENTS.md 本来就写了一次一张。\n3) DASH-044（supersedingId 跨卡泄漏）已建卡，停在 backlog 等你决定。见回复里的解释。"
+  },
+  "comments": [
+    {
+      "id": "c-20260901T055609-782d",
+      "at": "2026-09-01T05:56:09+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-09-01T05:56:09+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：用户 2026-09-01「3.ready需要人去推，推到ready后，如果没有依赖卡住或者其他卡点，自动执行所有可执行的ready」。据此建卡并开工，勾 readiness.human_approval_recorded。product 关卡仍留给人自己勾。"
+    }
+  ]
+}

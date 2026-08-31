@@ -288,6 +288,11 @@
   .kind-pick button[data-kind].is-picked { background: var(--ink); color: var(--on-ink); }
   .superseding { font-size: 11px; color: var(--crit); font-weight: 700; margin-left: 8px; display: inline-flex; align-items: center; gap: 4px; }
   .superseding button { border: none; background: transparent; color: var(--crit); font-size: 14px; padding: 0 2px; }
+  /* 「回答」是主行动（那条留言正等着你），所以实心；「取代决策」是补救动作，留描边。 */
+  .cm-answer { border: 1px solid var(--accent); background: var(--accent); color: var(--on-ink); border-radius: 6px; padding: 2px 10px; font-size: 11px; font-weight: 600; margin-top: 6px; margin-left: 6px; }
+  .cm-answer:hover { filter: brightness(1.12); }
+  .answering { font-size: 11px; color: var(--accent); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; }
+  .answering button { border: none; background: transparent; color: var(--accent); font-size: 14px; padding: 0 2px; }
 
   .comment-form { display: flex; gap: 8px; align-items: flex-start; }
   .comment-form textarea { flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; min-height: 40px; resize: vertical; background: var(--surface); color: var(--ink); }
@@ -587,10 +592,10 @@
   }
   /** 留言走专用的 append-only 端点。整卡 PUT 已不接受 comments —— 那是为了让
    *  「人在浏览器拖卡」永远不可能洗掉 agent 刚贴的留言。 */
-  function addComment(id, kind, text, supersedes) {
+  function addComment(id, kind, text, supersedes, re) {
     return api("/api/cards/" + encodeURIComponent(id) + "/comments", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: kind, text: text, supersedes: supersedes || [] })
+      body: JSON.stringify({ kind: kind, text: text, supersedes: supersedes || [], re: re || null })
     }).catch(function (err) { showToast("留言失败：" + err.message, true); throw err; });
   }
 
@@ -845,6 +850,11 @@
     return c.authorKind === "human" ? "cm-await-ai" : "cm-await-you";
   }
   var supersedingId = null;   // 正在取代哪条决策
+  /* 正在回答哪条提问。带上它送出的留言 kind 是 answer 且 re 指向它，服务端
+     （card-store.mjs 的 appendComment）会顺手把那条 question 标 done——这正是
+     以前 UI 缺的一环：人答了，agent 那边的 question 却一直 open，于是
+     renderCardForAgent continue 告诉它「人还没回答」，它就重复问。 */
+  var answeringId = null;
 
   function fmtAt(iso) {
     var d = new Date(iso);
@@ -860,6 +870,9 @@
     // 「已确认 · 14:02」——把「AI 到底看没看见我的决定」从信仰变成可见状态
     if (c.status === "acked" || c.status === "done") statusTxt += " · " + fmtAt(c.statusAt);
     var canSupersede = c.kind === "decision" && (c.status === "open" || c.status === "acked");
+    /* 只对 agent 提的、还没答的问题给「回答」入口。人自己提的 question 是问 agent 的，
+       在这里给按钮等于让人回答自己——agent 要回答走 cli.mjs answer。 */
+    var canAnswer = c.kind === "question" && c.authorKind === "agent" && c.status === "open";
     return '<div class="comment' + (c.status === "superseded" ? " is-superseded" : "") + '">' +
       '<div class="comment-avatar ' + (isAgent ? "av-agent" : "av-human") + '">' + escapeHtml(initial) + "</div>" +
       '<div class="cm-body">' +
@@ -869,6 +882,7 @@
       '<span class="comment-time">' + fmtAt(c.at) + "</span>" +
       '<div class="comment-text">' + escapeHtml(c.text) + "</div>" +
       (canSupersede ? '<button type="button" class="cm-supersede" data-supersede="' + c.id + '">取代这条决策</button>' : "") +
+      (canAnswer ? '<button type="button" class="cm-answer" data-answer="' + c.id + '">回答</button>' : "") +
       "</div></div>";
   }
 
@@ -984,13 +998,19 @@
       "</details>" +
 
       '<div><span class="modal-section-label">留言</span>' + commentsHtml +
+      // 回答模式下 kind 是确定的（answer），三个 kind 按钮没有意义，直接换掉整排。
       '<div class="kind-pick">' +
-        '<button type="button" data-kind="note" class="is-picked">留言</button>' +
-        '<button type="button" data-kind="decision">决策</button>' +
-        '<button type="button" data-kind="question">提问</button>' +
-        (supersedingId ? '<span class="superseding">取代 ' + escapeHtml(supersedingId.slice(-4)) + ' <button type="button" id="cancel-supersede">×</button></span>' : "") +
+        (answeringId
+          ? '<span class="answering">回答提问 ' + escapeHtml(answeringId.slice(-4)) +
+            ' <button type="button" id="cancel-answer">×</button></span>'
+          : '<button type="button" data-kind="note" class="is-picked">留言</button>' +
+            '<button type="button" data-kind="decision">决策</button>' +
+            '<button type="button" data-kind="question">提问</button>' +
+            (supersedingId ? '<span class="superseding">取代 ' + escapeHtml(supersedingId.slice(-4)) + ' <button type="button" id="cancel-supersede">×</button></span>' : "")) +
       "</div>" +
-      '<div class="comment-form"><textarea id="new-comment" placeholder="「决策」会被注入 agent 的下一轮 context；「留言」只是记录…"></textarea>' +
+      '<div class="comment-form"><textarea id="new-comment" placeholder="' +
+      (answeringId ? "这条回答会关掉那个提问，并进入 agent 的下一轮 context…"
+                   : "「决策」会被注入 agent 的下一轮 context；「留言」只是记录…") + '"></textarea>' +
       '<button type="button" id="add-comment">送出</button></div></div>' +
       "</div>" +
       '<div class="modal-footer"><button type="button" class="danger-btn" id="delete-card">删除卡片</button><span></span></div>';
@@ -1003,7 +1023,10 @@
   function closeModal() {
     var overlay = document.getElementById("modal-overlay");
     overlay.classList.remove("is-open");
-    setTimeout(function () { overlay.hidden = true; openId = null; openGate = null; }, 150);
+    // answeringId 必须跟着卡片一起清：留着的话，在 A 卡进入回答模式、关掉、再开 B 卡
+    // 送出的那条 answer 会带着 A 卡的 re——服务端找不到那条 question，于是静默悬空。
+    // （supersedingId 有同样的跨卡泄漏，但那是既有行为，不在本卡范围内，见回复里的 Todo。）
+    setTimeout(function () { overlay.hidden = true; openId = null; openGate = null; answeringId = null; }, 150);
   }
 
   function showToast(msg, isError) {
@@ -1173,6 +1196,7 @@
     var supBtn = e.target.closest("[data-supersede]");
     if (supBtn && openId) {
       supersedingId = supBtn.dataset.supersede;
+      answeringId = null;              // 两个模式互斥：一次只写一条留言
       reopenModal(openId);
       var ta = document.getElementById("new-comment");
       if (ta) ta.focus();
@@ -1181,6 +1205,22 @@
     }
     if (e.target.id === "cancel-supersede" && openId) {
       supersedingId = null;
+      reopenModal(openId);
+      return;
+    }
+
+    var ansBtn = e.target.closest("[data-answer]");
+    if (ansBtn && openId) {
+      answeringId = ansBtn.dataset.answer;
+      supersedingId = null;
+      reopenModal(openId);
+      var ta2 = document.getElementById("new-comment");
+      if (ta2) ta2.focus();
+      showToast("送出后那条提问会变成「已完成」，回答正文进入 agent 的下一轮 context");
+      return;
+    }
+    if (e.target.id === "cancel-answer" && openId) {
+      answeringId = null;
       reopenModal(openId);
       return;
     }
@@ -1194,8 +1234,11 @@
       var cardId = openId;
       var sup = supersedingId ? [supersedingId] : [];
       if (sup.length) kind = "decision";   // 取代只对决策有意义
-      addComment(cardId, kind, text, sup).then(function () {
+      var re = answeringId;
+      if (re) kind = "answer";             // 回答模式下 kind 由模式决定，不看按钮
+      addComment(cardId, kind, text, sup, re).then(function () {
         supersedingId = null;
+        answeringId = null;
         // 服务端只回一条留言；整卡（含新 rev）要重新拉，否则本地 rev 会过期
         return loadAll().then(function () { renderAll(); if (openId === cardId) reopenModal(cardId); });
       }).catch(function () {});

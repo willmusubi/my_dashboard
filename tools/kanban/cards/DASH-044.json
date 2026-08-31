@@ -1,0 +1,63 @@
+{
+  "id": "DASH-044",
+  "title": "supersedingId 跨卡泄漏：在 A 卡点了「取代决策」不送出，去 B 卡写的留言会变成决策",
+  "content": "## 问题\n`index.html` 的 `closeModal()` 会清 `openId` / `openGate` / `answeringId`，但**不清 `supersedingId`**。\n\n于是这条路径会静默出事：\n1. 在 A 卡上点某条决策的「取代这条决策」→ 前端记下 `supersedingId = 那条决策的 id`\n2. **不送出，直接关掉卡片**（改主意了、点错了、想先去看别的卡）\n3. 打开 B 卡，选「留言」，写一段话，送出\n\n送出时 `add-comment` 的处理是：\n```js\nvar sup = supersedingId ? [supersedingId] : [];\nif (sup.length) kind = \"decision\";   // 取代只对决策有意义\n```\n\n结果：你以为写的是一条**留言**，实际存进 B 卡的是一条**决策**，还声称取代了一条根本不在这张卡上的留言。\n\n## 后果，两条\n1. **kind 被静默改成 decision**（这条更严重）。`note` 不进 agent 的 context，`decision` 会——而且带着「必须遵守；要推翻必须先问人」的标题。你随手记的一笔变成了一条指令。\n2. `supersedes` 里留一个悬空 id。`appendComment` 里 `card.comments.find(...)` 找不到就跳过，不报错。\n\n两条都没有任何提示。\n\n## 根因\n和 DASH-040 修的 `answeringId` 是同一个形状：模式状态挂在模块级变量上，但关卡片时没跟着清。那次我只清了自己新加的 `answeringId`，`supersedingId` 是既有行为，留在原地并在代码注释里点了名。\n\n## 做法\n`closeModal()` 里补 `supersedingId = null`，和 `answeringId` 并排。一行。\n\n## 非目标\n- 不改 `supersedes` 的语义，也不加「悬空 id 要报错」的校验（`validateCard` 已经在管引用完整性，见 test-store 的「引用完整性」段）。\n- 不做「关卡片前提示有未送出的内容」这类更大的交互改动。\n\n## 验收标准\n- 在 A 卡点「取代这条决策」→ 关掉 → 开 B 卡 → 选「留言」写字送出 → B 卡上存的是 `kind=note`、`supersedes=[]`。\n- A 卡那条决策的状态不变（没被取代）。\n\n## 验证契约\n- 命令：test.sh 里补一条 —— 模拟两次开关卡片之间的模式残留，断言第二条留言的 kind 与 supersedes\n- npm test 全绿",
+  "stage": "backlog",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": false,
+  "createdAt": "2026-09-01",
+  "updatedAt": "2026-09-01T06:05:12+07:00",
+  "rev": 3,
+  "epic": "人机决策通道",
+  "userStory": "留言结构化",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": false,
+    "non_goals_clear": false,
+    "acceptance_testable": false,
+    "files_known": false,
+    "scope_defined": false,
+    "verification_contract": false,
+    "human_approval_recorded": false
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": false,
+    "code_review": false
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [],
+    "findings": [],
+    "residual": ""
+  },
+  "comments": [
+    {
+      "id": "c-20260901T060512-79a2",
+      "at": "2026-09-01T06:05:12+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-09-01T06:05:12+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "建卡时我直接写了 stage=ready，用来给 DASH-043 做端到端验证（证明 hook 真的会把 ready 卡推到 agent 眼前，证据已收进 DASH-043）。验证完退回 backlog：ready 是人的批准手势，我不该替人推——这正是 DASH-043 刚写进 board-card.md 的规则。要做这张卡，你自己把它拖进 ready。"
+    }
+  ]
+}
