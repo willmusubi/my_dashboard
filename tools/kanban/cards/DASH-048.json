@@ -1,0 +1,73 @@
+{
+  "id": "DASH-048",
+  "title": "留言写到一半会被静默清空：关卡片、勾一个关卡、甚至别人改了别的卡都会",
+  "content": "## 问题\n留言输入框的内容没有任何保护，三条路径都会把它清空，全都没有提示：\n\n1. **关掉卡片** —— `closeModal()` 直接丢弃。\n2. **勾任何一个字段** —— 勾 gates/readiness 会走 `reopenModal()` → `openModal()` 重绘，textarea 是重新生成的。\n3. **别人改了任意一张卡** —— `syncNow()` 每 4 秒轮询，`if (changed) { renderAll(); if (openId) openModal(openId); }`。**你什么都没做，字自己没了。**\n\n第 3 条最恶劣：多人/多 agent 同时用看板时，你正在写的长留言会被一个跟你无关的改动冲掉。\n\n## 做法\n加一层按卡片 id 的内存草稿：\n\n- `openModal()` 开头先存当前打开卡片的草稿（切卡时 `openId` 还是旧值，正好），渲染后把目标卡的草稿填回去。\n- `closeModal()` 存。\n- 留言送出成功后清掉那张卡的草稿。\n- 删卡后清掉。\n\n这样三条路径一次全堵住，不用弹任何对话框打断人。\n\n## 为什么不用 confirm\n「有未送出的内容，确定放弃吗？」这种对话框只挡得住第 1 条路径，挡不住 2 和 3（那两条不是人主动要关卡片）。而且点了「确定」内容照样没了——它只是把静默丢失变成响亮丢失。恢复草稿是直接让「丢失」这件事不发生。\n\n## 非目标\n- **草稿不持久化到 localStorage**。刷新页面就没了，可以接受——它防的是误操作和轮询重绘，不是崩溃恢复。存到磁盘要处理过期、多标签页冲突，不值得。\n- **模式状态（`supersedingId` / `answeringId`）不进草稿。** DASH-044 刚确立的规则是关卡片必须清模式，只恢复文本、不恢复模式，是安全的组合：字不丢，模式不泄漏到别的卡。\n- 不做「未送出内容」的视觉标记。\n\n## 允许改的文件\n- `tools/kanban/index.html`\n- `tools/kanban/test.sh`（结构断言）\n\n## 验收标准\n- 在卡片上写字不送出 → 勾一个 readiness → 字还在。\n- 写字不送出 → 关掉 → 重开同一张 → 字还在。\n- 写字不送出 → 切到另一张卡 → 那张是空的 → 切回来 → 字还在。\n- 送出后重开，输入框是空的（草稿已清）。\n- 恢复出来的是纯文本：kind 回到默认「留言」，不带 `supersedes` / `re`。\n\n## 验证契约\n- 命令：`npm test` 全绿\n- 浏览器：上述五条各走一遍",
+  "stage": "verify",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": false,
+  "createdAt": "2026-09-01",
+  "updatedAt": "2026-09-01T07:22:29+07:00",
+  "rev": 6,
+  "epic": "看板可用性",
+  "userStory": "字段可编辑",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "npm test → card-store 153 通过 / 0 失败；HTTP 集成 133 通过 / 0 失败（新增 1 条草稿接线的结构断言）",
+      "浏览器五条验收（Chrome，DASH-049/050 临时卡，全程不刷新页面）：① 写字后勾「问题明确」→ readiness 变 1/7，字还在 ② 切到 Y 卡 → Y 是空的（placeholder 灰字，草稿没泄漏）③ 切回 X → 字回来了，kind 回到默认「留言」④ 送出 → 关卡 → 重开 → 输入框回到 placeholder（空），留言已存为「留言 · 已完成」",
+      "临时卡 DASH-049 / DASH-050 已删"
+    ],
+    "findings": [
+      "开工时查触发路径，发现丢字不止人说的那一条：勾字段走 reopenModal 重绘、轮询 syncNow 检测到**任意一张卡**有变化也会重绘打开的 modal。第三条最恶劣——你什么都没做，别人改了张无关的卡，4 秒后你正在写的长留言就没了。三条同源（草稿没保存），修一条必然修另两条。",
+      "没用 confirm。「确定放弃吗」只挡得住「人主动关卡片」这一条，挡不住重绘那两条（那不是人要关卡片），而且点了确定内容照样没——它只是把静默丢失变成响亮丢失。恢复草稿是让丢失这件事不发生。",
+      "草稿只存文本，不存 supersedingId / answeringId。DASH-044 刚定的规则是关卡片必须清模式；恢复文本而不恢复模式才是安全组合——字不丢，模式不泄漏到别的卡。浏览器验证第 ③ 条确认了：切回来时 kind 是默认的「留言」。",
+      "自己踩了一次同样的顺序陷阱，而且是第二次：送出后只 delete drafts[cardId]，紧接着的 reopenModal → openModal 开头的 saveDraft() 会把 textarea 里还没重绘掉的文字原样存回去，于是「送出了的留言」又变成草稿，下次开卡再冒出来。第一次是删卡那处（靠调换顺序解决）。这次改成先清 DOM 再清 drafts。浏览器实测抓到的——只跑结构断言不会发现。",
+      "第一次验证「送出后草稿清掉」时我 navigate 刷新了页面，而 drafts 是内存变量，刷新后本来就空——那次验证不算数，无论修没修都会绿。重做了一遍，全程不刷新。"
+    ],
+    "residual": "1) 草稿不持久化，刷新页面就没了。不用跟：卡上列为非目标，它防的是误操作和轮询重绘，不是崩溃恢复。存 localStorage 要处理过期与多标签页冲突，不值得。重新评估的触发条件——真的有人因为误刷新丢了长留言。\n2) 结构断言测不到浏览器行为，四条验收标准是我人工点的。要有人跟：这已经是第三张卡撞上「前端没有行为级测试」（DASH-040、DASH-044、本卡）。人这轮已说「2.可以测试」，headless 测试另开一张卡做。"
+  },
+  "comments": [
+    {
+      "id": "c-20260901T070257-1a32",
+      "at": "2026-09-01T07:02:57+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-09-01T07:02:57+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：人 2026-09-01「4.可以修复一下这点」，指的是 DASH-044 residual 里那条「关卡片时若有未送出的文字，直接丢弃，没有任何提示」。开工时查了所有触发路径，发现丢字不止关卡片一条：勾字段会走 reopenModal 重绘，轮询 syncNow 检测到任何卡有变化也会重绘打开的 modal——第三条最恶劣，人什么都没做字自己没了。三条同源（草稿没有任何保存），修一条必然修另两条，所以卡片范围按三条写。"
+    }
+  ]
+}

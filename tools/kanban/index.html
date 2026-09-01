@@ -309,6 +309,10 @@
   .epic-head { padding: 16px 20px 14px; display: flex; flex-direction: column; gap: 8px; }
   .epic-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .epic-name { font-size: 15.5px; font-weight: 700; }
+  /* 定位辅助，不是主角：够读、够对齐，但不跟 Epic 名字抢。等宽 + 固定最小宽度，
+     这样 0–9 和 10+ 的名字仍然左对齐（real_rpg 有 27 个 Epic，错开一格很显眼）。 */
+  .epic-num { display: inline-block; min-width: 1.6em; margin-right: 8px; font-size: 12.5px;
+              font-weight: 600; color: var(--ink-faint); }
   .epic-frac { font-size: 13px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
   .epic-def { font-size: 12.5px; color: var(--ink-dim); line-height: 1.55; max-width: 80ch; }
   .epic-body { padding: 4px 20px 18px; display: flex; flex-direction: column; gap: 16px; }
@@ -713,7 +717,13 @@
     );
   }
 
-  function epicCardHtml(epic) {
+  /* Epic 的序号是**数组位置推导出来的**，不是 epics.json 里的字段。存字段的话，
+     调换两个 Epic 的顺序就得同步改号，迟早错位——而这个顺序是有强制含义的：
+     project-kickoff.md:128 要求先做排在前面的 Epic，ready 队列（card-store.mjs 的
+     readyOrderKey）也按它排。号码必须永远等于位置，所以只能推导。
+     从 0 起是项目既有惯例（project-kickoff.md 与卡片正文里都写「Epic 0」），
+     三个下游的第 0 个 Epic 也确实都是基础设施那一层。 */
+  function epicCardHtml(epic, index) {
     var tasks = TICKETS.filter(function (t) { return t.epic === epic.name; });
     var doneCount = tasks.filter(function (t) { return t.stage === "done"; }).length;
     var storyNames = (epic.stories || []).map(function (s) { return s.name; });
@@ -725,7 +735,8 @@
     return (
       '<div class="epic-card">' +
       '<div class="epic-head">' +
-      '<div class="epic-title-row"><span class="epic-name">' + escapeHtml(epic.name) + "</span>" +
+      '<div class="epic-title-row"><span class="epic-name">' +
+      '<span class="epic-num mono">' + index + "</span>" + escapeHtml(epic.name) + "</span>" +
       '<span class="epic-frac tabular">' + doneCount + " / " + tasks.length + " 完成 · " + pct(doneCount, tasks.length) + "%</span></div>" +
       '<p class="epic-def">' + escapeHtml(epic.definition || "") + "</p>" +
       '<div class="progress-bar"><span style="width:' + pct(doneCount, tasks.length) + '%"></span></div>' +
@@ -737,7 +748,8 @@
 
   function renderRoadmap() {
     document.getElementById("roadmap").innerHTML = EPICS.length
-      ? EPICS.map(epicCardHtml).join("")
+      // 显式传 index：序号来自数组位置这件事，在调用点也该看得见
+      ? EPICS.map(function (e, i) { return epicCardHtml(e, i); }).join("")
       // 这段是每个全新安装第一眼看到的东西，必须和 AGENTS.md 的「必要流程」一致。
       // 上游原文写的是「走一遍 spec-interrogation → implementation-plan」，和它自己的
       // AGENTS.md 矛盾——而上游 project-kickoff.md 三处都把 spec-interrogation 定位成
@@ -918,7 +930,25 @@
       n + " / " + req.length + "</span>";
   }
 
+  /* ── 留言草稿 ──
+     textarea 的内容以前没有任何保护，三条路径都会静默清空它：
+       ① 关掉卡片；
+       ② 勾任何一个 gates/readiness（走 reopenModal → openModal 重绘）；
+       ③ **别人改了任意一张卡** —— syncNow 每 4 秒轮询，changed 就重绘打开的 modal。
+     第三条最恶劣：你什么都没做，正在写的长留言自己没了。
+     三条同源（草稿没保存），所以在这里一次堵住，不弹任何对话框打断人。
+     只存文本，不存 supersedingId / answeringId：DASH-044 刚定的规则是关卡片必须
+     清模式，恢复文本而不恢复模式才是安全的组合——字不丢，模式不泄漏到别的卡。 */
+  var drafts = {};
+  function saveDraft() {
+    var ta = document.getElementById("new-comment");
+    if (!ta || !openId) return;
+    if (ta.value.trim()) drafts[openId] = ta.value;
+    else delete drafts[openId];
+  }
+
   function openModal(id) {
+    saveDraft();   // 切卡时 openId 还是上一张，正好把它的草稿收好
     openId = id;
     var tk = getTicket(id);
     if (!tk) return;
@@ -1015,18 +1045,35 @@
       "</div>" +
       '<div class="modal-footer"><button type="button" class="danger-btn" id="delete-card">删除卡片</button><span></span></div>';
 
+    // 恢复草稿。textarea 是刚重新生成的，所以只能在这里填，不能靠 value 属性
+    var draftTa = document.getElementById("new-comment");
+    if (draftTa && drafts[id]) draftTa.value = drafts[id];
+
     var overlay = document.getElementById("modal-overlay");
     overlay.hidden = false;
     requestAnimationFrame(function () { overlay.classList.add("is-open"); });
   }
 
   function closeModal() {
+    saveDraft();
     var overlay = document.getElementById("modal-overlay");
     overlay.classList.remove("is-open");
-    // answeringId 必须跟着卡片一起清：留着的话，在 A 卡进入回答模式、关掉、再开 B 卡
-    // 送出的那条 answer 会带着 A 卡的 re——服务端找不到那条 question，于是静默悬空。
-    // （supersedingId 有同样的跨卡泄漏，但那是既有行为，不在本卡范围内，见回复里的 Todo。）
-    setTimeout(function () { overlay.hidden = true; openId = null; openGate = null; answeringId = null; }, 150);
+    /* 两个模式变量都必须跟着卡片一起清，否则在 A 卡点了「取代」/「回答」但没送出就
+       关掉，那个状态会跟到 B 卡去：
+         supersedingId 残留 —— 你在 B 卡选「留言」写的东西，送出时被静默改成
+           **决策**（add-comment 里 `if (sup.length) kind = "decision"`），还带着
+           一个 B 卡上不存在的 supersedes id。随手记的一笔于是变成一条指令，
+           顶着「必须遵守」的标题进 agent 的 context。
+         answeringId 残留 —— 那条 answer 带着 A 卡的 re，服务端找不到对应的
+           question，静默悬空。
+       两者都没有任何提示，所以只能在这里堵住。 */
+    setTimeout(function () {
+      overlay.hidden = true;
+      openId = null;
+      openGate = null;
+      answeringId = null;
+      supersedingId = null;
+    }, 150);
   }
 
   function showToast(msg, isError) {
@@ -1239,6 +1286,13 @@
       addComment(cardId, kind, text, sup, re).then(function () {
         supersedingId = null;
         answeringId = null;
+        /* 清 DOM 再清草稿，两步都要。只 delete drafts 的话，下面 reopenModal →
+           openModal 开头的 saveDraft() 会把 textarea 里那段还没重绘掉的文字
+           原样存回去——送出了的留言于是又变成草稿，下次开卡再冒出来。
+           （删卡那处是同一个陷阱，靠调换顺序解决。） */
+        var sentTa = document.getElementById("new-comment");
+        if (sentTa) sentTa.value = "";
+        delete drafts[cardId];
         // 服务端只回一条留言；整卡（含新 rev）要重新拉，否则本地 rev 会过期
         return loadAll().then(function () { renderAll(); if (openId === cardId) reopenModal(cardId); });
       }).catch(function () {});
@@ -1250,7 +1304,10 @@
       var idToDelete = openId;
       deleteCard(idToDelete).then(function () {
         TICKETS = TICKETS.filter(function (x) { return x.id !== idToDelete; });
+        // 必须在 closeModal 之后：它开头的 saveDraft() 会把 textarea 的内容
+        // 重新写进 drafts[openId]，先删就白删了
         closeModal();
+        delete drafts[idToDelete];
         renderAll();
       });
       return;

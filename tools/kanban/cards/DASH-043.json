@@ -2,14 +2,14 @@
   "id": "DASH-043",
   "title": "Ready 车道对 agent 不可见：人推了卡进去，agent 一张都看不到",
   "content": "## 问题\n`ready` 的语义是「人已批准、可以开工」，人拖卡进去就是那个批准手势。但 **agent 完全看不见这个手势**：\n\n- `boardBrief()`（SessionStart + UserPromptSubmit 两个 hook 的数据源）只报三类卡：有待确认的人工留言、有等人回答的提问、`verify` 且人工关卡已放行。`ready` 栏一张都不报。\n- `cli.mjs open` 只列「有待处理的人工决策或提问」的卡，同样漏掉整条 ready 车道。\n\n所以人拖完卡，还得回终端一张张点名。ready 空了一整年正是因为这个——`project-kickoff.md:128` 早就写了「每次只处理一张状态为 ready 的任务卡」，但没有任何机制把那条车道推到 agent 眼前。和 DASH-039 修的是同一类缺陷。\n\n## 要什么\n人把卡拖进 ready = 批准开工。之后 agent 接手时，**自己看得到 ready 栏里所有可执行的卡，并依次做完**，不用人一张张说。\n\n「可执行」= 同时满足：\n- `stage === \"ready\"`\n- `dependsOn` 列出的卡全部 `done`\n- 卡上没有 open 的 agent question（有的话说明这张卡在等人回答，不该自动开工）\n\n顺序沿用 `project-kickoff.md:128`：先按 `epics.json` 里 Epic 的定义顺序，同 Epic 内再按 `order` 由小到大。不跳着挑周边小功能先做。\n\n## 范围\n- `card-store.mjs`：`boardBrief()` 增加一类 `readyToStart`；`renderBoardBrief()` 相应措辞；排序辅助。\n- `cli.mjs`：`open` 子命令一并列出可执行的 ready 卡。\n- `ai/skills/board-card.md`：写清楚「人推 ready、agent 不推 ready」和「看到 ready 就依次做」两条规则。\n- 测试：`test-store.mjs` + `test.sh`。\n\n## 非目标\n- **不做并行执行。** agent 一次实作一张已批准的卡（`AGENTS.md`），依次做完，不是一次全推进 implementing。`implementing` 的 WIP 上限 3 也不该被绕过。\n- **不把 readiness 当门槛。** 人拖到 ready 就是批准了；readiness 7 项是给人自己看的检查表，缺项就在输出里提示，但不因此拒绝执行——那等于 agent 否决人的批准。\n- 不做自动推进 stage（agent 拿起一张卡时照常自己推 implementing）。\n- 不碰 `ready` 的服务端语义（`ADVANCED_STAGES` 的依赖门禁不动）。\n\n## 验收标准\n- ready 栏有一张无阻塞的卡时，`session-board-brief.mjs` 的输出里点名它，并说明「人已批准，可以直接开工」。\n- 依赖没做完的 ready 卡**不**被列为可执行（列出来会让 agent 撞服务端的 400）。\n- 卡上有 open 的 agent question 时不被列为可执行。\n- 多张可执行时，输出顺序是 Epic 定义顺序 → order。\n- ready 栏空、或全部被阻塞时，brief 不多说一个字（安静时零 token 成本这条不能破）。\n\n## 验证契约\n- 命令：造 4 张卡（可执行 / 依赖未完成 / 有 open 提问 / 不在 ready），断言只有第一张被列出\n- 排序：跨 Epic + 同 Epic 内乱序的 order，断言输出顺序\n- `npm test` 全绿",
-  "stage": "verify",
+  "stage": "done",
   "risk": "low",
   "owner": "willmusubi",
   "agent": "",
   "approvalRequired": false,
   "createdAt": "2026-09-01",
-  "updatedAt": "2026-09-01T06:05:44+07:00",
-  "rev": 6,
+  "updatedAt": "2026-09-01T06:15:49+07:00",
+  "rev": 9,
   "epic": "人机决策通道",
   "userStory": "强制注入",
   "track": "backend",
@@ -25,7 +25,7 @@
     "human_approval_recorded": true
   },
   "gates": {
-    "product": false,
+    "product": true,
     "ui": false,
     "architecture": false,
     "security": false,
@@ -70,6 +70,18 @@
       "re": null,
       "supersedes": [],
       "text": "授权留痕：用户 2026-09-01「3.ready需要人去推，推到ready后，如果没有依赖卡住或者其他卡点，自动执行所有可执行的ready」。据此建卡并开工，勾 readiness.human_approval_recorded。product 关卡仍留给人自己勾。"
+    },
+    {
+      "id": "c-20260901T061549-8b09",
+      "at": "2026-09-01T06:15:49+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-09-01T06:15:49+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收通过（2026-09-01）：product 关卡由人勾选，卡片推进 done。同一轮里人把 DASH-044 拖进了 ready——这套机制的第一个真实用例，hook 在下一轮会话开始时确实点名了它。"
     }
   ]
 }

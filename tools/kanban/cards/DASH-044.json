@@ -2,35 +2,35 @@
   "id": "DASH-044",
   "title": "supersedingId 跨卡泄漏：在 A 卡点了「取代决策」不送出，去 B 卡写的留言会变成决策",
   "content": "## 问题\n`index.html` 的 `closeModal()` 会清 `openId` / `openGate` / `answeringId`，但**不清 `supersedingId`**。\n\n于是这条路径会静默出事：\n1. 在 A 卡上点某条决策的「取代这条决策」→ 前端记下 `supersedingId = 那条决策的 id`\n2. **不送出，直接关掉卡片**（改主意了、点错了、想先去看别的卡）\n3. 打开 B 卡，选「留言」，写一段话，送出\n\n送出时 `add-comment` 的处理是：\n```js\nvar sup = supersedingId ? [supersedingId] : [];\nif (sup.length) kind = \"decision\";   // 取代只对决策有意义\n```\n\n结果：你以为写的是一条**留言**，实际存进 B 卡的是一条**决策**，还声称取代了一条根本不在这张卡上的留言。\n\n## 后果，两条\n1. **kind 被静默改成 decision**（这条更严重）。`note` 不进 agent 的 context，`decision` 会——而且带着「必须遵守；要推翻必须先问人」的标题。你随手记的一笔变成了一条指令。\n2. `supersedes` 里留一个悬空 id。`appendComment` 里 `card.comments.find(...)` 找不到就跳过，不报错。\n\n两条都没有任何提示。\n\n## 根因\n和 DASH-040 修的 `answeringId` 是同一个形状：模式状态挂在模块级变量上，但关卡片时没跟着清。那次我只清了自己新加的 `answeringId`，`supersedingId` 是既有行为，留在原地并在代码注释里点了名。\n\n## 做法\n`closeModal()` 里补 `supersedingId = null`，和 `answeringId` 并排。一行。\n\n## 非目标\n- 不改 `supersedes` 的语义，也不加「悬空 id 要报错」的校验（`validateCard` 已经在管引用完整性，见 test-store 的「引用完整性」段）。\n- 不做「关卡片前提示有未送出的内容」这类更大的交互改动。\n\n## 验收标准\n- 在 A 卡点「取代这条决策」→ 关掉 → 开 B 卡 → 选「留言」写字送出 → B 卡上存的是 `kind=note`、`supersedes=[]`。\n- A 卡那条决策的状态不变（没被取代）。\n\n## 验证契约\n- 命令：test.sh 里补一条 —— 模拟两次开关卡片之间的模式残留，断言第二条留言的 kind 与 supersedes\n- npm test 全绿",
-  "stage": "backlog",
+  "stage": "done",
   "risk": "low",
   "owner": "willmusubi",
   "agent": "",
   "approvalRequired": false,
   "createdAt": "2026-09-01",
-  "updatedAt": "2026-09-01T06:05:12+07:00",
-  "rev": 3,
+  "updatedAt": "2026-09-01T06:46:39+07:00",
+  "rev": 14,
   "epic": "人机决策通道",
   "userStory": "留言结构化",
   "track": "frontend",
   "dependsOn": [],
   "order": 1,
   "readiness": {
-    "problem_clear": false,
-    "non_goals_clear": false,
-    "acceptance_testable": false,
-    "files_known": false,
-    "scope_defined": false,
-    "verification_contract": false,
-    "human_approval_recorded": false
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
   },
   "gates": {
-    "product": false,
-    "ui": false,
+    "product": true,
+    "ui": true,
     "architecture": false,
     "security": false,
-    "test": false,
-    "code_review": false
+    "test": true,
+    "code_review": true
   },
   "links": {
     "featureSpec": "",
@@ -42,9 +42,20 @@
   },
   "refs": [],
   "evidence": {
-    "commands": [],
-    "findings": [],
-    "residual": ""
+    "commands": [
+      "复现（改之前）：把 add-comment 那段判定抄进 node 跑一遍——选「留言」但 supersedingId 残留时，送出的是 {\"kind\":\"decision\",\"supersedes\":[\"c-…-aaaa\"],\"re\":null}。同一段逻辑在 answeringId 已清的情况下返回 {\"kind\":\"note\",\"supersedes\":[],\"re\":null}",
+      "npm test → card-store 153 通过 / 0 失败；HTTP 集成 132 通过 / 0 失败（新增 2 条结构断言）",
+      "浏览器端到端（Chrome，DASH-045/046 临时卡）：A 卡点「取代这条决策」→ Esc 关掉不送出 → 开 B 卡 → kind-pick 区是干净的三个按钮，没有「取代 xxxx ×」标记 → 选「留言」写字送出",
+      "落盘复验：B 卡存的是 kind=note、supersedes=[]、re=None；A 卡那条决策 status 仍是 open（没被取代）。两条验收标准都过",
+      "临时卡 DASH-045 / DASH-046 已删"
+    ],
+    "findings": [
+      "两个模式变量是同一个形状的问题，所以一起清而不是只补一个：supersedingId 残留会把「留言」静默改成「决策」（add-comment 里 if (sup.length) kind = \"decision\"），answeringId 残留会让 answer 的 re 悬空。前者更严重——note 不进 agent 的 context，decision 会，而且顶着「必须遵守；要推翻必须先问人」的标题。随手记的一笔于是变成一条指令。",
+      "测试是结构断言，不是行为断言，这一点在代码注释里写明了：没有 headless 浏览器，所以测的是「清理语句在不在 closeModal 里」。它防的是将来有人动这个函数时把清理删掉，测不到浏览器里的真实点击——真实点击这次是人工在 Chrome 里走的。",
+      "结构断言配了一条反向断言：把 supersedingId 的清理从函数体里正则拿掉，检查必须报 MISSING:supersedingId。只写正向的话，正则哪天匹配不到函数体（比如有人改了 closeModal 的缩进或写法）会静默变成永远通过。",
+      "DASH-040 当时只清了 answeringId 并在注释里点名 supersedingId，是对的取舍：那张卡的范围是「加回答按钮」，顺手改一个既有 bug 会让 diff 说不清。但那条注释必须跟着这次删掉——它说的「不在本卡范围内，见回复里的 Todo」现在已经过时。"
+    ],
+    "residual": "1) 关卡片时若有未送出的文字，直接丢弃，没有任何提示。不用跟：这是既有行为，卡上明确列为非目标（「不做关卡片前提示有未送出的内容」）。重新评估的触发条件——真的有人抱怨写了一半的留言没了。\n2) 前端逻辑没有行为级测试，本次是人工在浏览器里走的。要有人跟（低优先）：要不要给看板接一个 headless 浏览器测试。现在整个前端都靠人工点，这不是这张卡引入的问题，但这张卡是第二次撞上它了（DASH-040 也是人工验的）。"
   },
   "comments": [
     {
@@ -58,6 +69,30 @@
       "re": null,
       "supersedes": [],
       "text": "建卡时我直接写了 stage=ready，用来给 DASH-043 做端到端验证（证明 hook 真的会把 ready 卡推到 agent 眼前，证据已收进 DASH-043）。验证完退回 backlog：ready 是人的批准手势，我不该替人推——这正是 DASH-043 刚写进 board-card.md 的规则。要做这张卡，你自己把它拖进 ready。"
+    },
+    {
+      "id": "c-20260901T061604-bda5",
+      "at": "2026-09-01T06:16:04+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-09-01T06:16:04+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：人 2026-09-01 把这张卡拖进 ready——按 board-card.md 新立的规则，那就是批准开工，不再回头问。readiness 7 项由我补齐（人拖进 ready 已是批准，缺项不是停下来的理由）。product / ui 关卡仍留给人自己勾。"
+    },
+    {
+      "id": "c-20260901T064639-acde",
+      "at": "2026-09-01T06:46:39+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-09-01T06:46:39+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收通过（2026-09-01）：product 与 ui 关卡由人勾选，卡片推进 done。"
     }
   ]
 }

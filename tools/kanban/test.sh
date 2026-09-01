@@ -508,6 +508,64 @@ for X in "$RA" "$RB" "$RC"; do curl -s -o /dev/null -X DELETE "$BASE/api/cards/$
 
 unset KANBAN_CARDS_DIR KANBAN_AGENT
 
+echo "── 前端模式状态：关卡片必须清干净 ──"
+# 「取代这条决策」和「回答」都靠一个模块级变量记状态。点了但没送出就关掉卡片时
+# 那个状态若不清，会跟到下一张卡去：supersedingId 残留会把你在 B 卡选的「留言」
+# 静默改成**决策**（add-comment 里 `if (sup.length) kind = "decision"`），
+# answeringId 残留会让 answer 的 re 悬空。两者都没有任何提示。
+#
+# 这是结构断言，不是行为断言：没有 headless 浏览器，所以测的是「清理语句在不在
+# closeModal 里」。它防的是将来有人动这个函数时把清理删掉，测不到浏览器里的真实点击。
+MODECHK=$(python3 - "$REPO/tools/kanban/index.html" <<'PY'
+import re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"function closeModal\(\)\s*\{(.*?)\n  \}", src, re.S)
+if not m:
+    print("NO_CLOSEMODAL"); raise SystemExit
+body = m.group(1)
+missing = [v for v in ("answeringId", "supersedingId") if not re.search(v + r"\s*=\s*null", body)]
+print("OK" if not missing else "MISSING:" + ",".join(missing))
+PY
+)
+chk "closeModal 同时清掉两个模式变量" "$MODECHK" "OK"
+# 反向：把清理拿掉必须让上面那条红，否则它测了个寂寞
+FAKE=$(python3 - "$REPO/tools/kanban/index.html" <<'PY'
+import re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"function closeModal\(\)\s*\{(.*?)\n  \}", src, re.S)
+body = re.sub(r"\s*supersedingId\s*=\s*null;", "", m.group(1))
+missing = [v for v in ("answeringId", "supersedingId") if not re.search(v + r"\s*=\s*null", body)]
+print("OK" if not missing else "MISSING:" + ",".join(missing))
+PY
+)
+chk "拿掉 supersedingId 的清理，该检查会红" "$FAKE" "MISSING:supersedingId"
+
+# 留言草稿：textarea 的内容以前三条路径都会静默清空（关卡片 / 勾字段走 reopenModal /
+# 轮询 syncNow 检测到任何卡有变化）。第三条最恶劣——人什么都没做字自己没了。
+# 同样是结构断言：钉住「重绘前存、重绘后取、送出后连 DOM 一起清」这三处接线还在。
+DRAFTCHK=$(python3 - "$REPO/tools/kanban/index.html" <<'PY'
+import re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+bad = []
+om = re.search(r"function openModal\(id\)\s*\{(.*?)\n  \}\n", src, re.S)
+if not om:
+    print("NO_OPENMODAL"); raise SystemExit
+body = om.group(1)
+# 存必须在渲染之前（切卡时 openId 还是上一张），取必须在 innerHTML 之后
+if not re.match(r"\s*saveDraft\(\);", body): bad.append("openModal-未在开头存草稿")
+if "drafts[id]" not in body: bad.append("openModal-未恢复草稿")
+if body.index("innerHTML") > body.index("drafts[id]"): bad.append("恢复早于重绘")
+cm = re.search(r"function closeModal\(\)\s*\{(.*?)\n  \}", src, re.S)
+if not cm or not re.match(r"\s*saveDraft\(\);", cm.group(1)): bad.append("closeModal-未存草稿")
+# 送出后只 delete drafts 不清 DOM 的话，紧接着的 reopenModal 会把它原样存回去
+sent = re.search(r"addComment\(cardId.*?delete drafts\[cardId\]", src, re.S)
+if not sent: bad.append("送出后未清草稿")
+elif 'sentTa.value = ""' not in sent.group(0): bad.append("送出后未清DOM")
+print("OK" if not bad else "BAD:" + ",".join(bad))
+PY
+)
+chk "草稿的三处接线都在（存/取/送出后清）" "$DRAFTCHK" "OK"
+
 echo "── U12：坏卡片进不了 commit（pre-commit 钩子）──"
 # 钩子是这套校验唯一「不需要人记得去跑」的入口，所以它自己必须有回归测试。
 # 在一个真的 git 仓库里跑真的 git commit——只跑脚本的话，core.hooksPath、

@@ -1,0 +1,100 @@
+{
+  "id": "DASH-047",
+  "title": "Epic 的序号在看板上不可见：顺序有含义，人却看不到自己在第几个",
+  "content": "## 问题\n`epics.json` 里 Epic 的**数组位置就是构建顺序**，而且是有强制含义的顺序：\n\n- `project-kickoff.md:128`：「优先选 `epics.json` 中排序较前面（较底层／较基础）Epic 底下的那张」\n- DASH-043 的 ready 队列排序：Epic 定义顺序优先于 `order`\n\n但**看板上一个数字都看不到**。`epicCardHtml()` 只渲染 `epic.name`，蓝图分页于是是一串没有编号的名字。real_rpg 有 27 个 Epic、medical_tourism 有 20 个——人翻到中间根本不知道自己在第几个，也看不出哪个更基础。\n\n卡片有 ID（DASH-038），Story 挂在 Epic 下，唯独 Epic 这一层没有任何标识符。\n\n## 范围\n只改 `tools/kanban/index.html` 的蓝图渲染（`epicCardHtml` / `storyBlockHtml` 及配套 CSS）。不动 `epics.json` 的结构——序号是**位置推导出来的**，不是新增字段，否则改顺序就要同步改号，必然错位。\n\n## 非目标\n- 不给 `epics.json` 加 `id` / `number` 字段。\n- 不做 Epic 的拖拽排序（要改顺序就编辑 `epics.json`）。\n- 不改看板分页（Epic 序号是蓝图的事，卡片上塞不下）。\n\n## 验收标准\n- 蓝图分页每个 Epic 显示自己的序号。\n- 序号来自数组位置，改 `epics.json` 的顺序后刷新页面，序号跟着变，不需要改任何别的东西。\n- Epic 为空时不报错。\n\n## 验证契约\n- 命令：`npm test` 全绿 + 浏览器截图（本仓库 4 个 Epic）\n- 调换 `epics.json` 里两个 Epic 的位置，刷新后序号跟着换，改回来",
+  "stage": "verify",
+  "risk": "low",
+  "owner": "willmusubi",
+  "agent": "",
+  "approvalRequired": false,
+  "createdAt": "2026-09-01",
+  "updatedAt": "2026-09-01T07:02:02+07:00",
+  "rev": 9,
+  "epic": "看板可用性",
+  "userStory": "字段可编辑",
+  "track": "frontend",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {
+    "problem_clear": true,
+    "non_goals_clear": true,
+    "acceptance_testable": true,
+    "files_known": true,
+    "scope_defined": true,
+    "verification_contract": true,
+    "human_approval_recorded": true
+  },
+  "gates": {
+    "product": false,
+    "ui": false,
+    "architecture": false,
+    "security": false,
+    "test": true,
+    "code_review": true
+  },
+  "links": {
+    "featureSpec": "",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "",
+    "verificationReport": "",
+    "pr": ""
+  },
+  "refs": [],
+  "evidence": {
+    "commands": [
+      "npm test → card-store 153 通过 / 0 失败；HTTP 集成 132 通过 / 0 失败（纯前端改动，无回归）",
+      "npm run check → governance kit check passed",
+      "node tools/kanban/cli.mjs validate → 卡片文件校验通过（44 张）",
+      "浏览器（Chrome）：蓝图分页每个 Epic 名字前出现序号——0 看板可用性 / 1 人机决策通道 / 2 简体化与文档 / 3 分发能力",
+      "序号跟随位置：把 epics.json 里第 0、1 个 Epic 对调 → 刷新 → 「人机决策通道」显示 0（原本是 1）→ 还原，git diff 对 epics.json 为空"
+    ],
+    "findings": [
+      "序号是数组位置推导的，不是 epics.json 里的字段。存字段的话调换顺序就要同步改号，迟早错位——而这个顺序有强制含义（project-kickoff.md:128 要求先做排在前面的 Epic，card-store.mjs 的 readyOrderKey 也按它排 ready 队列）。号码必须永远等于位置，所以只能推导。",
+      "从 0 起，不是随手选的：project-kickoff.md:124 与 DASH-038 的卡片正文都写「Epic 0」，而三个下游的第 0 个 Epic 分别是「项目设置」「项目设置」「Godot 迁移」，都确实是第 0 步（基础设施那一层）。人若偏好 1-based，渲染处 +1，一行。",
+      "renderRoadmap 里写成显式的 map(function (e, i) { return epicCardHtml(e, i); })，没有依赖 Array.map 隐式传 index。多一层包装换来的是：读调用点的人立刻知道序号来自数组位置。",
+      "CSS 用 min-width: 1.6em 固定编号宽度。real_rpg 有 27 个 Epic，个位数和两位数混排时不固定宽度会让名字左边缘错开一格，很显眼。",
+      "ask --wait 等了 300 秒没等到人（这是它第一次在真实场景里跑，超时路径按设计工作：退出码 0，提示停下来问人）。两个待确认项（0/1-based、Story 要不要也编号）都不是阻塞性的——选错改起来是一行，而人明确要求这步在 commit 之前完成。所以取默认值做完并在卡上留痕，没有干等。",
+      "User Story 没有编号。人只提了 Epic，Story 编号是我自己想加的，不做。"
+    ],
+    "residual": "1) 0-based 与「Story 不编号」两项是我取的默认值，人没答。要有人跟（低优先）：看一眼截图，不满意说一声，两者各是一行。\n2) 序号只在蓝图分页显示，看板分页的卡片上没有。不用跟：卡片上已经有 ID、风险、track 三个 pill，塞不下，且卡片本来就按车道而非 Epic 组织。卡上列为非目标。"
+  },
+  "comments": [
+    {
+      "id": "c-20260901T064754-3a48",
+      "at": "2026-09-01T06:47:54+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "question",
+      "status": "open",
+      "statusAt": "2026-09-01T06:47:54+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "Epic 序号有两处我不想替你猜，答一下我就直接做完：\n\n（1）从 0 还是从 1 开始数？\n    内部数组是 0-based，DASH-038 的卡片正文和 project-kickoff.md 里也都写「Epic 0」。\n    但给人看的编号通常从 1 起。两种都行，说一个。\n\n（2）User Story 那一层要不要也编号？\n    你只提了 Epic。Story 若也编，形态大概是「1.2 留言结构化」这种层级号。\n    不编的话 Story 保持现在的纯名字。\n\n另外确认一下我理解对没有：你说的「Epic 现在有数字标识」，指的是 epics.json 里\nEpic 的排列顺序（第几个）——那个顺序有实际含义（构建顺序，ready 队列也按它排），\n只是界面上看不见。如果你指的是别的东西，直接说。"
+    },
+    {
+      "id": "c-20260901T065345-a7b4",
+      "at": "2026-09-01T06:53:45+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-09-01T06:53:45+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "ask --wait 等了 300 秒没等到回答，按「先做不依赖回答的部分」继续，取默认值并留痕，人可随时一行推翻：\n\n（1）编号从 0 起。不是随手选的——这是项目既有惯例：project-kickoff.md:124 和 DASH-038 的卡片正文都写「Epic 0」，而三个下游的第 0 个 Epic 分别是「项目设置」「项目设置」「Godot 迁移」，都是真正的第 0 步（基础设施）。要改成 1-based 就是渲染处 +1，一行。\n\n（2）User Story 不编号。你只提了 Epic，Story 编号是我自己想加的，不做——范围就是范围。要加就是 storyBlockHtml 里补一个层级号，也是一行。\n\n理由链见回复。这条 note 不具约束力，你说改我就改。"
+    },
+    {
+      "id": "c-20260901T065345-3eae",
+      "at": "2026-09-01T06:53:45+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-09-01T06:53:45+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "授权留痕：人 2026-09-01「Epic 现在有数字标识，但是看板里都没有体现出来数字，这块可以优化，优化完自检，然后推入 done。这一步在分发之前，commit push 前做」。据此建卡开工，勾 readiness.human_approval_recorded。product / ui 关卡仍留给人。"
+    }
+  ]
+}
