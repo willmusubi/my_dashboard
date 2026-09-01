@@ -962,5 +962,67 @@ FOUT=$(KANBAN_TEST_PORT=$((PORT + 2)) bash "$INSTALLER" --yes "$DT/verify_broken
 fi
 
 echo
+echo "── 新的 kit 文件不能漏登记到分发清单 ──"
+# 真踩过：test-ui.mjs 写完没加进 install-into-project.sh 的清单，分发时静默不带过去，
+# 下游拿到的 test.sh 会去调一个不存在的文件。这类遗漏没有任何报错，只能靠测试兜。
+#
+# 只在分发源跑：install-into-project.sh 是源仓库的文件，本来就不分发，
+# 装到别的项目后这条无从谈起。不加这个守卫，下游每次 npm test 都会红一条
+# 它既看不懂也修不了的失败。
+if [ ! -f "$REPO/scripts/install-into-project.sh" ]; then
+  echo "  ⏭  跳过：这里不是分发源（没有 scripts/install-into-project.sh）"
+else
+MISSING_IN_DIST=$(python3 - "$REPO" <<'PY'
+import os, re, sys
+repo = sys.argv[1]
+script = open(os.path.join(repo, "scripts/install-into-project.sh"), encoding="utf-8").read()
+# tools/kanban 下这几个是 project-owned，本来就不该进 kit 清单
+OWNED = {"config.json", "epics.json"}
+missing = []
+for f in sorted(os.listdir(os.path.join(repo, "tools/kanban"))):
+    if f in OWNED or not re.search(r"\.(mjs|sh|html|md)$", f):
+        continue
+    if "tools/kanban/" + f not in script:
+        missing.append(f)
+print(",".join(missing) if missing else "OK")
+PY
+)
+chk "tools/kanban 下的 kit 文件都在分发清单里" "$MISSING_IN_DIST" "OK"
+fi
+
+echo
+echo "── 前端行为测试（Playwright，可选）──"
+# 这个 kit 承诺「零依赖（只用 Node 内建模块）」，install-into-project.sh 不跑
+# npm install。所以浏览器测试只进 devDependencies，装了才跑（决策见 DASH-051）。
+#
+# 两层检测，因为「装了模块但没装浏览器二进制」是很常见的一种半装状态，
+# 而这两种情况要给的是**不同的**命令。绝不静默跳过：静默跳过会读成「测过了」。
+UI_STATE=$(cd "$REPO" && node -e "
+try { var pw = require('playwright'); } catch { console.log('NO_MODULE'); process.exit(0); }
+try {
+  var p = require('playwright').chromium.executablePath();
+  console.log(require('fs').existsSync(p) ? 'READY' : 'NO_BROWSER');
+} catch { console.log('NO_BROWSER'); }
+" 2>/dev/null || echo NO_MODULE)
+
+case "$UI_STATE" in
+  READY)
+    if (cd "$REPO" && node tools/kanban/test-ui.mjs); then
+      ok "前端行为测试全绿"
+    else
+      no "前端行为测试有失败" "见上方输出"
+    fi
+    ;;
+  NO_BROWSER)
+    echo "  ⏭  已跳过前端行为测试：playwright 装了，但浏览器二进制没装"
+    echo "     跑起来：npx playwright install chromium"
+    ;;
+  *)
+    echo "  ⏭  已跳过前端行为测试：本项目没装 playwright（这是刻意的——kit 保持零依赖）"
+    echo "     想跑：npm install --save-dev playwright && npx playwright install chromium"
+    ;;
+esac
+
+echo
 echo "通过 ${PASS}，失败 ${FAIL}"
 [ "$FAIL" -eq 0 ]

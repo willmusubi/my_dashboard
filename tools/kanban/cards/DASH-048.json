@@ -2,19 +2,19 @@
   "id": "DASH-048",
   "title": "留言写到一半会被静默清空：关卡片、勾一个关卡、甚至别人改了别的卡都会",
   "content": "## 问题\n留言输入框的内容没有任何保护，三条路径都会把它清空，全都没有提示：\n\n1. **关掉卡片** —— `closeModal()` 直接丢弃。\n2. **勾任何一个字段** —— 勾 gates/readiness 会走 `reopenModal()` → `openModal()` 重绘，textarea 是重新生成的。\n3. **别人改了任意一张卡** —— `syncNow()` 每 4 秒轮询，`if (changed) { renderAll(); if (openId) openModal(openId); }`。**你什么都没做，字自己没了。**\n\n第 3 条最恶劣：多人/多 agent 同时用看板时，你正在写的长留言会被一个跟你无关的改动冲掉。\n\n## 做法\n加一层按卡片 id 的内存草稿：\n\n- `openModal()` 开头先存当前打开卡片的草稿（切卡时 `openId` 还是旧值，正好），渲染后把目标卡的草稿填回去。\n- `closeModal()` 存。\n- 留言送出成功后清掉那张卡的草稿。\n- 删卡后清掉。\n\n这样三条路径一次全堵住，不用弹任何对话框打断人。\n\n## 为什么不用 confirm\n「有未送出的内容，确定放弃吗？」这种对话框只挡得住第 1 条路径，挡不住 2 和 3（那两条不是人主动要关卡片）。而且点了「确定」内容照样没了——它只是把静默丢失变成响亮丢失。恢复草稿是直接让「丢失」这件事不发生。\n\n## 非目标\n- **草稿不持久化到 localStorage**。刷新页面就没了，可以接受——它防的是误操作和轮询重绘，不是崩溃恢复。存到磁盘要处理过期、多标签页冲突，不值得。\n- **模式状态（`supersedingId` / `answeringId`）不进草稿。** DASH-044 刚确立的规则是关卡片必须清模式，只恢复文本、不恢复模式，是安全的组合：字不丢，模式不泄漏到别的卡。\n- 不做「未送出内容」的视觉标记。\n\n## 允许改的文件\n- `tools/kanban/index.html`\n- `tools/kanban/test.sh`（结构断言）\n\n## 验收标准\n- 在卡片上写字不送出 → 勾一个 readiness → 字还在。\n- 写字不送出 → 关掉 → 重开同一张 → 字还在。\n- 写字不送出 → 切到另一张卡 → 那张是空的 → 切回来 → 字还在。\n- 送出后重开，输入框是空的（草稿已清）。\n- 恢复出来的是纯文本：kind 回到默认「留言」，不带 `supersedes` / `re`。\n\n## 验证契约\n- 命令：`npm test` 全绿\n- 浏览器：上述五条各走一遍",
-  "stage": "verify",
+  "stage": "done",
   "risk": "low",
   "owner": "willmusubi",
   "agent": "",
   "approvalRequired": false,
   "createdAt": "2026-09-01",
-  "updatedAt": "2026-09-01T07:22:29+07:00",
-  "rev": 6,
+  "updatedAt": "2026-09-01T15:56:28+07:00",
+  "rev": 11,
   "epic": "看板可用性",
   "userStory": "字段可编辑",
   "track": "frontend",
   "dependsOn": [],
-  "order": 1,
+  "order": 2,
   "readiness": {
     "problem_clear": true,
     "non_goals_clear": true,
@@ -25,8 +25,8 @@
     "human_approval_recorded": true
   },
   "gates": {
-    "product": false,
-    "ui": false,
+    "product": true,
+    "ui": true,
     "architecture": false,
     "security": false,
     "test": true,
@@ -68,6 +68,18 @@
       "re": null,
       "supersedes": [],
       "text": "授权留痕：人 2026-09-01「4.可以修复一下这点」，指的是 DASH-044 residual 里那条「关卡片时若有未送出的文字，直接丢弃，没有任何提示」。开工时查了所有触发路径，发现丢字不止关卡片一条：勾字段会走 reopenModal 重绘，轮询 syncNow 检测到任何卡有变化也会重绘打开的 modal——第三条最恶劣，人什么都没做字自己没了。三条同源（草稿没有任何保存），修一条必然修另两条，所以卡片范围按三条写。"
+    },
+    {
+      "id": "c-20260901T155628-963b",
+      "at": "2026-09-01T15:56:28+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-09-01T15:56:28+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收通过（2026-09-01）：product 与 ui 关卡由人勾选，卡片推进 done。"
     }
   ]
 }

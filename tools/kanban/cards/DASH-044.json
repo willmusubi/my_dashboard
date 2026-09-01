@@ -8,8 +8,8 @@
   "agent": "",
   "approvalRequired": false,
   "createdAt": "2026-09-01",
-  "updatedAt": "2026-09-01T06:46:39+07:00",
-  "rev": 14,
+  "updatedAt": "2026-09-01T16:13:10+07:00",
+  "rev": 15,
   "epic": "人机决策通道",
   "userStory": "留言结构化",
   "track": "frontend",
@@ -93,6 +93,18 @@
       "re": null,
       "supersedes": [],
       "text": "人工验收通过（2026-09-01）：product 与 ui 关卡由人勾选，卡片推进 done。"
+    },
+    {
+      "id": "c-20260901T161310-a346",
+      "at": "2026-09-01T16:13:10+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "note",
+      "status": "done",
+      "statusAt": "2026-09-01T16:13:10+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "更正一处后果分析（DASH-051 写行为测试时发现的）：我在这张卡上写的是「supersedes 里留一个悬空 id，appendComment 里 find 找不到就跳过，不报错」。实际上 validateCard 的引用完整性检查会把整条留言拒掉（400），所以真实后果不是「悄悄存进去一条决策」，而是「你写的留言送不出去，报一个看不懂的错」。bug 本身和修法都不变（kind 仍然被静默改成 decision），但严重性的描述该更正——这一条是 test-ui.mjs 跑回退验证时崩在 comments[0] 上暴露的：残留模式下 B 卡根本没有留言。"
     }
   ]
 }

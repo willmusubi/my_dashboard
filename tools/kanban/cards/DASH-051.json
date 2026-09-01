@@ -1,15 +1,15 @@
 {
   "id": "DASH-051",
   "title": "看板前端没有行为级测试：三张卡的验收都靠人工点浏览器",
-  "content": "## 问题\nDASH-040（回答按钮）、DASH-044（supersedingId 泄漏）、DASH-048（留言草稿）三张卡的验收标准全是 UI 行为，全部靠人工在 Chrome 里点。现有的只有结构断言（用正则检查某段代码在不在），它测不到：\n\n- 点击后 DOM 有没有正确更新\n- 模式状态有没有跨卡泄漏\n- 轮询重绘会不会冲掉输入\n\nDASH-048 那个「送出后草稿又冒出来」的 bug 就是人工点出来的——结构断言全绿。\n\n## 冲突：这跟「零依赖」是对立的\n**`tools/kanban/README.md` 开篇：「零依赖（只用 Node 内建模块）」。** `install-into-project.sh` 不跑 `npm install`，`package.json` 里一个 dependency 都没有。这是这个 kit 能被安全分发到任意项目的前提。\n\n加浏览器测试就要打破它，而且会传染到三个下游。所以这是个架构取舍，不是实现细节。\n\n## 四个选项\n\n**A. Playwright（或 Puppeteer）**\n- 真浏览器，能测所有行为，生态成熟\n- 破坏零依赖：node_modules + 几百 MB 浏览器二进制；三个下游各装一份；CI 也要装\n\n**B. 依赖只进 devDependencies，且测试可跳过**\n- `npm test` 检测不到 playwright 就跳过前端那一段并响亮说「已跳过」\n- 下游不装就还是零依赖，想测的项目自己装\n- 代价：分发出去的多数项目实际上仍然没有前端测试，等于把问题推给未来\n\n**C. 连本机已开的 Chrome（CDP over WebSocket）**\n- 零依赖（Node 22 有内建 WebSocket），用 --remote-debugging-port 起 Chrome\n- 代价：要人先手动起一个带调试端口的 Chrome，`npm test` 不再是一条命令跑完；CI 里更麻烦\n\n**D. 不做，继续人工验**\n- 零成本，保住零依赖\n- 代价：每张前端卡都要人陪着点一遍；已经三张了\n\n## 待决\n选哪个。这不是「选错了改一行」的事——A 会落进三个下游的 package.json，撤回要再跑一轮分发。\n\n## 非目标\n- 不做视觉回归（截图比对）。那是另一个量级的维护成本。\n- 不重写现有的结构断言：无论选哪个，它们都便宜且有用，留着。",
-  "stage": "blocked",
+  "content": "## 问题\nDASH-040（回答按钮）、DASH-044（supersedingId 泄漏）、DASH-047（Epic 序号）、DASH-048（留言草稿）四张卡的验收标准全是 UI 行为，全部靠人工在 Chrome 里点。现有的只有结构断言（正则检查某段代码在不在），它测不到点击后 DOM 有没有正确更新、模式状态有没有跨卡泄漏、轮询重绘会不会冲掉输入。\n\nDASH-048 那个「送出后草稿又冒出来」的 bug 就是人工点出来的——结构断言全绿。\n\n## 决策：选 B（人 2026-09-01 定）\n浏览器测试**只进 `devDependencies`**，`npm test` 检测不到就跳过那一段并**响亮说明已跳过**。\n\n理由：保住「装进新项目仍然零依赖」这条底线（`README` 开篇的承诺、`install-into-project.sh` 不跑 `npm install`），同时让这个仓库——改造实验室、前端 bug 主要被发现和修的地方——自己能跑真测试。\n\n其余三个选项（A 全量 Playwright / C 连本机 Chrome 的 CDP / D 不做）的取舍见本卡的历史留言。\n\n## 做法\n- `package.json` 加 `devDependencies: { playwright }`，**不加任何 dependencies**。\n- 新增 `tools/kanban/test-ui.mjs`：起 server → 用 Playwright 驱动真浏览器 → 断言行为。\n- `test.sh` 调它，并做**两层**可用性检测（缺任一就跳过）：\n  1. `playwright` 模块能不能 import\n  2. 浏览器二进制在不在（装了模块没跑 `npx playwright install` 是常见状态）\n- 跳过时打印一行明确的提示 + 装它的命令，**不能静默跳过**——静默跳过会读成「测过了」。\n- 分发脚本不把 `devDependencies` 写进下游的 `package.json`（`install-into-project.sh` 对 package.json 是「只加不改」，需确认它不会带过去）。\n\n## 要测什么\n把四张卡人工验过的行为自动化：\n- **DASH-040**：agent 提问 → 「回答」按钮出现 → 送出 → 那条 question 变 `done`、新留言是 `answer` 且 `re` 指向它。\n- **DASH-044**：A 卡点「取代这条决策」→ 关掉不送出 → B 卡选「留言」送出 → 存的必须是 `note`、`supersedes` 为空。\n- **DASH-048**：写字 → 勾一个 readiness → 字还在；切到另一张卡 → 那张是空的；切回来 → 字还在；送出 → 重开为空。\n- **DASH-047**：蓝图分页每个 Epic 显示序号，且等于它在 `epics.json` 里的位置。\n\n## 非目标\n- 不做视觉回归（截图比对）——另一个量级的维护成本。\n- 不重写现有的结构断言：它们便宜且在跳过时仍然有效，留着。\n- 不把浏览器测试挂进 pre-commit 钩子（太慢）。\n- 不改 `install-into-project.sh` 的分发清单（`test-ui.mjs` 属于 kit 文件，随现有规则走）。\n\n## 验收标准\n- 装了 playwright + 浏览器：`npm test` 跑完前端行为测试，上述四组断言全绿。\n- **没装**：`npm test` 照常跑完其余全部测试并成功退出（退出码 0），输出里有一行明确的「已跳过前端行为测试」+ 安装命令。\n- 装了模块但没装浏览器二进制：同样跳过，且提示说的是「跑 npx playwright install chromium」而不是「装 playwright」。\n- 三个下游升级后 `npm test` 不因为缺 playwright 而失败。\n\n## 验证契约\n- 命令：装着跑一次（贴断言）→ 临时把 node_modules/playwright 移走再跑一次（贴跳过提示与退出码）→ 移回来\n- 下游：升级后在 medical_tourism 跑一次 `npm test`，确认跳过而非失败",
+  "stage": "verify",
   "risk": "medium",
   "owner": "willmusubi",
   "agent": "",
   "approvalRequired": false,
   "createdAt": "2026-09-01",
-  "updatedAt": "2026-09-01T07:26:09+07:00",
-  "rev": 3,
+  "updatedAt": "2026-09-01T16:13:47+07:00",
+  "rev": 9,
   "epic": "看板可用性",
   "userStory": "数据完整性",
   "track": "frontend",
@@ -29,8 +29,8 @@
     "ui": false,
     "architecture": false,
     "security": false,
-    "test": false,
-    "code_review": false
+    "test": true,
+    "code_review": true
   },
   "links": {
     "featureSpec": "",
@@ -42,9 +42,25 @@
   },
   "refs": [],
   "evidence": {
-    "commands": [],
-    "findings": [],
-    "residual": ""
+    "commands": [
+      "装了跑：npm test → card-store 153 通过/0、集成 135 通过/0、前端行为 15 通过/0，退出码 0",
+      "红→绿逐条验证（这才是这套测试的价值所在）：回退 DASH-044（closeModal 不清 supersedingId）→ 红 2 条；回退 DASH-048（送出后不清 DOM）→ 红 1 条「送出后草稿清掉了，重开是空的」；回退 DASH-047（去掉 epic-num）→ 红 1 条「每个 Epic 都有序号」；三次还原后均回到 15 通过 0 失败",
+      "没装 playwright：把 node_modules/playwright 移走 → npm test 退出码 0，输出「⏭ 已跳过前端行为测试：本项目没装 playwright（这是刻意的——kit 保持零依赖）」+ 安装命令，其余 153/133 照常全绿",
+      "装了模块没装浏览器：PLAYWRIGHT_BROWSERS_PATH 指到空目录 → 退出码 0，提示改成「playwright 装了，但浏览器二进制没装 / 跑起来：npx playwright install chromium」",
+      "分发：upgrade-all.sh 成功 3/跳过 0/失败 0，test-ui.mjs 在三个下游均为「新建」",
+      "下游 devDependencies 未被污染：medical_tourism / real_rpg 的 package.json 没有 playwright、也没有 node_modules/playwright（install-into-project.sh 只动 scripts 段）",
+      "下游真实跑通：three_kingdoms_traveler 自带 playwright，npm run kanban:test → 前端行为测试 15 通过/0 失败"
+    ],
+    "findings": [
+      "两层可用性检测是必需的，不是洁癖：「装了模块但没装浏览器二进制」是很常见的一种半装状态，而这两种情况要给的命令完全不同（npm install vs npx playwright install）。给错命令的跳过提示比不提示更浪费时间。",
+      "绿的测试证明不了它会红。所以逐条做了回退验证：把 DASH-044/047/048 的修复各自撤掉一次，确认对应断言精确报红。写完就跑一遍绿的，等于没测。",
+      "回退验证顺手暴露了脚本的健壮性问题：断言失败后 readCard(B.id).comments[0] 是 undefined，整个脚本崩掉，掩盖了后面所有测试。改成失败时打印「整条被服务端拒绝，什么都没存」而不是崩。",
+      "同一次回退还更正了 DASH-044 的后果分析：残留取代模式时，supersedes 指向一个 B 卡上不存在的 id，validateCard 的引用完整性检查会把整条拒掉（400）。所以真实后果是「留言送不出去」而不是「悄悄存成决策」。已在 DASH-044 上追加更正留言。",
+      "test-ui.mjs 写完忘了加进 install-into-project.sh 的分发清单，第一次分发时静默不带过去——下游拿到的 test.sh 会去调一个不存在的文件。这类遗漏没有任何报错，所以补了一条测试遍历 tools/kanban 下的 kit 文件断言都在清单里，并做了红绿验证。",
+      "那条新测试第一版在下游必然失败：install-into-project.sh 是源仓库的文件，本来就不分发。加了守卫——不是分发源就跳过。不加的话每个下游 npm test 都会红一条它既看不懂也修不了的失败。",
+      "选择器一开始猜错了（写成 [data-open] / .ticket，实际是 .ticket-card[data-id]）。data-open 是蓝图分页里的任务行，看板车道里的卡片是另一个类名。"
+    ],
+    "residual": "1) 浏览器测试不在 pre-commit 钩子里（卡上列为非目标，太慢）。不用跟：npm test 会跑，CI 若接了 npm test 就是第二道。\n2) 没做视觉回归（截图比对）。不用跟：另一个量级的维护成本，卡上列为非目标。\n3) three_kingdoms_traveler 的 npm run kanban:test 有一条失败，是它**自己项目的** scripts/export-smoke.sh:11 被 kit 的 shell 静态检查抓到（变量后紧跟全角字符，应写 ${VAR}）。跟本次改动无关，但要有人跟：那是 TKT 仓库的事，我没动别人项目的文件。\n4) 前端行为测试目前只覆盖四张卡验过的路径（回答按钮 / 取代模式泄漏 / 草稿 / Epic 序号）。拖拽、依赖门禁、WIP 上限这些仍然没有行为级覆盖。要有人跟（低优先）：要不要继续补，还是等下次撞到再说。"
   },
   "comments": [
     {
@@ -53,11 +69,23 @@
       "author": "claude-code",
       "authorKind": "agent",
       "kind": "question",
-      "status": "open",
-      "statusAt": "2026-09-01T07:26:09+07:00",
+      "status": "done",
+      "statusAt": "2026-09-01T15:56:53+07:00",
       "re": null,
       "supersedes": [],
       "text": "你说「2.可以测试」，我开工才发现这跟本 kit 的零依赖特性是对立的，所以停下来问你——这一条选错了不是改一行的事。\n\ntools/kanban/README.md 开篇写的是「零依赖（只用 Node 内建模块）」，install-into-project.sh 不跑 npm install，package.json 里一个 dependency 都没有。这是它能被安全装进任意项目的前提。加浏览器测试就要打破它，而且会跟着分发落进三个下游。\n\n四个选项（卡片正文里有完整取舍）：\n\n  A. Playwright —— 真浏览器，什么都能测；代价是零依赖没了，三个下游各装一份 + 几百 MB 浏览器二进制\n  B. 只进 devDependencies，测不到就跳过并响亮提示 —— 下游不装仍是零依赖；代价是多数项目实际还是没有前端测试\n  C. 连本机已开的 Chrome（CDP，Node 22 内建 WebSocket）—— 真零依赖；代价是要先手动起带调试端口的 Chrome，npm test 不再一条命令跑完\n  D. 不做，继续人工验 —— 保住零依赖；代价是每张前端卡都要你陪着点，已经三张了\n\n我倾向 B：保住「装进新项目仍然零依赖」这条底线，同时让这个仓库（改造实验室）自己能跑真测试——前端 bug 本来就主要在这里被发现和修。但这是你的架构决定，不是我的。\n\n其余三项（Epic 序号、草稿保留、分发+commit+push）不依赖这个答案，我先做完。"
+    },
+    {
+      "id": "c-20260901T155653-f983",
+      "at": "2026-09-01T15:56:53+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-09-01T15:56:53+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人的决策留痕：2026-09-01 人在对话里答「1. 选B」——即「浏览器测试只进 devDependencies，测不到就跳过并响亮提示」。人没在看板 UI 上写，所以这条由我记成 progress（记录），不是 decision（只有人能写）。据此把卡片的做法与验收标准从「四选一待决」改写成 B 的具体形态，并开工。"
     }
   ]
 }

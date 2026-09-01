@@ -7,5 +7,8 @@
     "kanban": "node tools/kanban/server.mjs",
     "test": "bash tools/kanban/test.sh",
     "check": "bash scripts/check-governance.sh"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
   }
 }

@@ -2,14 +2,14 @@
   "id": "DASH-047",
   "title": "Epic 的序号在看板上不可见：顺序有含义，人却看不到自己在第几个",
   "content": "## 问题\n`epics.json` 里 Epic 的**数组位置就是构建顺序**，而且是有强制含义的顺序：\n\n- `project-kickoff.md:128`：「优先选 `epics.json` 中排序较前面（较底层／较基础）Epic 底下的那张」\n- DASH-043 的 ready 队列排序：Epic 定义顺序优先于 `order`\n\n但**看板上一个数字都看不到**。`epicCardHtml()` 只渲染 `epic.name`，蓝图分页于是是一串没有编号的名字。real_rpg 有 27 个 Epic、medical_tourism 有 20 个——人翻到中间根本不知道自己在第几个，也看不出哪个更基础。\n\n卡片有 ID（DASH-038），Story 挂在 Epic 下，唯独 Epic 这一层没有任何标识符。\n\n## 范围\n只改 `tools/kanban/index.html` 的蓝图渲染（`epicCardHtml` / `storyBlockHtml` 及配套 CSS）。不动 `epics.json` 的结构——序号是**位置推导出来的**，不是新增字段，否则改顺序就要同步改号，必然错位。\n\n## 非目标\n- 不给 `epics.json` 加 `id` / `number` 字段。\n- 不做 Epic 的拖拽排序（要改顺序就编辑 `epics.json`）。\n- 不改看板分页（Epic 序号是蓝图的事，卡片上塞不下）。\n\n## 验收标准\n- 蓝图分页每个 Epic 显示自己的序号。\n- 序号来自数组位置，改 `epics.json` 的顺序后刷新页面，序号跟着变，不需要改任何别的东西。\n- Epic 为空时不报错。\n\n## 验证契约\n- 命令：`npm test` 全绿 + 浏览器截图（本仓库 4 个 Epic）\n- 调换 `epics.json` 里两个 Epic 的位置，刷新后序号跟着换，改回来",
-  "stage": "verify",
+  "stage": "done",
   "risk": "low",
   "owner": "willmusubi",
   "agent": "",
   "approvalRequired": false,
   "createdAt": "2026-09-01",
-  "updatedAt": "2026-09-01T07:02:02+07:00",
-  "rev": 9,
+  "updatedAt": "2026-09-01T15:56:28+07:00",
+  "rev": 13,
   "epic": "看板可用性",
   "userStory": "字段可编辑",
   "track": "frontend",
@@ -25,8 +25,8 @@
     "human_approval_recorded": true
   },
   "gates": {
-    "product": false,
-    "ui": false,
+    "product": true,
+    "ui": true,
     "architecture": false,
     "security": false,
     "test": true,
@@ -95,6 +95,18 @@
       "re": null,
       "supersedes": [],
       "text": "授权留痕：人 2026-09-01「Epic 现在有数字标识，但是看板里都没有体现出来数字，这块可以优化，优化完自检，然后推入 done。这一步在分发之前，commit push 前做」。据此建卡开工，勾 readiness.human_approval_recorded。product / ui 关卡仍留给人。"
+    },
+    {
+      "id": "c-20260901T155628-4f18",
+      "at": "2026-09-01T15:56:28+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-09-01T15:56:28+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收通过（2026-09-01）：product 与 ui 关卡由人勾选，卡片推进 done。"
     }
   ]
 }

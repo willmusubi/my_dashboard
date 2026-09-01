@@ -361,6 +361,7 @@ for p in \
   .claude/skills .claude/agents \
   tools/kanban/server.mjs tools/kanban/card-store.mjs tools/kanban/cli.mjs \
   tools/kanban/index.html tools/kanban/test.sh tools/kanban/test-store.mjs \
+  tools/kanban/test-ui.mjs \
   tools/kanban/hooks tools/kanban/README.md \
   .githooks/kanban-cards.sh \
   scripts/check-governance.sh \
