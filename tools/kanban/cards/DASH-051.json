@@ -2,14 +2,14 @@
   "id": "DASH-051",
   "title": "看板前端没有行为级测试：三张卡的验收都靠人工点浏览器",
   "content": "## 问题\nDASH-040（回答按钮）、DASH-044（supersedingId 泄漏）、DASH-047（Epic 序号）、DASH-048（留言草稿）四张卡的验收标准全是 UI 行为，全部靠人工在 Chrome 里点。现有的只有结构断言（正则检查某段代码在不在），它测不到点击后 DOM 有没有正确更新、模式状态有没有跨卡泄漏、轮询重绘会不会冲掉输入。\n\nDASH-048 那个「送出后草稿又冒出来」的 bug 就是人工点出来的——结构断言全绿。\n\n## 决策：选 B（人 2026-09-01 定）\n浏览器测试**只进 `devDependencies`**，`npm test` 检测不到就跳过那一段并**响亮说明已跳过**。\n\n理由：保住「装进新项目仍然零依赖」这条底线（`README` 开篇的承诺、`install-into-project.sh` 不跑 `npm install`），同时让这个仓库——改造实验室、前端 bug 主要被发现和修的地方——自己能跑真测试。\n\n其余三个选项（A 全量 Playwright / C 连本机 Chrome 的 CDP / D 不做）的取舍见本卡的历史留言。\n\n## 做法\n- `package.json` 加 `devDependencies: { playwright }`，**不加任何 dependencies**。\n- 新增 `tools/kanban/test-ui.mjs`：起 server → 用 Playwright 驱动真浏览器 → 断言行为。\n- `test.sh` 调它，并做**两层**可用性检测（缺任一就跳过）：\n  1. `playwright` 模块能不能 import\n  2. 浏览器二进制在不在（装了模块没跑 `npx playwright install` 是常见状态）\n- 跳过时打印一行明确的提示 + 装它的命令，**不能静默跳过**——静默跳过会读成「测过了」。\n- 分发脚本不把 `devDependencies` 写进下游的 `package.json`（`install-into-project.sh` 对 package.json 是「只加不改」，需确认它不会带过去）。\n\n## 要测什么\n把四张卡人工验过的行为自动化：\n- **DASH-040**：agent 提问 → 「回答」按钮出现 → 送出 → 那条 question 变 `done`、新留言是 `answer` 且 `re` 指向它。\n- **DASH-044**：A 卡点「取代这条决策」→ 关掉不送出 → B 卡选「留言」送出 → 存的必须是 `note`、`supersedes` 为空。\n- **DASH-048**：写字 → 勾一个 readiness → 字还在；切到另一张卡 → 那张是空的；切回来 → 字还在；送出 → 重开为空。\n- **DASH-047**：蓝图分页每个 Epic 显示序号，且等于它在 `epics.json` 里的位置。\n\n## 非目标\n- 不做视觉回归（截图比对）——另一个量级的维护成本。\n- 不重写现有的结构断言：它们便宜且在跳过时仍然有效，留着。\n- 不把浏览器测试挂进 pre-commit 钩子（太慢）。\n- 不改 `install-into-project.sh` 的分发清单（`test-ui.mjs` 属于 kit 文件，随现有规则走）。\n\n## 验收标准\n- 装了 playwright + 浏览器：`npm test` 跑完前端行为测试，上述四组断言全绿。\n- **没装**：`npm test` 照常跑完其余全部测试并成功退出（退出码 0），输出里有一行明确的「已跳过前端行为测试」+ 安装命令。\n- 装了模块但没装浏览器二进制：同样跳过，且提示说的是「跑 npx playwright install chromium」而不是「装 playwright」。\n- 三个下游升级后 `npm test` 不因为缺 playwright 而失败。\n\n## 验证契约\n- 命令：装着跑一次（贴断言）→ 临时把 node_modules/playwright 移走再跑一次（贴跳过提示与退出码）→ 移回来\n- 下游：升级后在 medical_tourism 跑一次 `npm test`，确认跳过而非失败",
-  "stage": "verify",
+  "stage": "done",
   "risk": "medium",
   "owner": "willmusubi",
   "agent": "",
   "approvalRequired": false,
   "createdAt": "2026-09-01",
-  "updatedAt": "2026-09-01T16:13:47+07:00",
-  "rev": 9,
+  "updatedAt": "2026-09-01T16:45:43+07:00",
+  "rev": 14,
   "epic": "看板可用性",
   "userStory": "数据完整性",
   "track": "frontend",
@@ -22,11 +22,11 @@
     "files_known": false,
     "scope_defined": false,
     "verification_contract": false,
-    "human_approval_recorded": false
+    "human_approval_recorded": true
   },
   "gates": {
-    "product": false,
-    "ui": false,
+    "product": true,
+    "ui": true,
     "architecture": false,
     "security": false,
     "test": true,
@@ -86,6 +86,18 @@
       "re": null,
       "supersedes": [],
       "text": "人的决策留痕：2026-09-01 人在对话里答「1. 选B」——即「浏览器测试只进 devDependencies，测不到就跳过并响亮提示」。人没在看板 UI 上写，所以这条由我记成 progress（记录），不是 decision（只有人能写）。据此把卡片的做法与验收标准从「四选一待决」改写成 B 的具体形态，并开工。"
+    },
+    {
+      "id": "c-20260901T164543-b1d6",
+      "at": "2026-09-01T16:45:43+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "evidence",
+      "status": "done",
+      "statusAt": "2026-09-01T16:45:43+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人工验收通过（2026-09-01）：product 与 ui 关卡由人勾选，卡片推进 done。B 方案（只进 devDependencies + 测不到就跳过）落地完成，三个下游已分发且未被污染。"
     }
   ]
 }

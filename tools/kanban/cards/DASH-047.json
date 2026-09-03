@@ -8,8 +8,8 @@
   "agent": "",
   "approvalRequired": false,
   "createdAt": "2026-09-01",
-  "updatedAt": "2026-09-01T15:56:28+07:00",
-  "rev": 13,
+  "updatedAt": "2026-09-01T16:45:55+07:00",
+  "rev": 15,
   "epic": "看板可用性",
   "userStory": "字段可编辑",
   "track": "frontend",
@@ -66,8 +66,8 @@
       "author": "claude-code",
       "authorKind": "agent",
       "kind": "question",
-      "status": "open",
-      "statusAt": "2026-09-01T06:47:54+07:00",
+      "status": "done",
+      "statusAt": "2026-09-01T16:45:55+07:00",
       "re": null,
       "supersedes": [],
       "text": "Epic 序号有两处我不想替你猜，答一下我就直接做完：\n\n（1）从 0 还是从 1 开始数？\n    内部数组是 0-based，DASH-038 的卡片正文和 project-kickoff.md 里也都写「Epic 0」。\n    但给人看的编号通常从 1 起。两种都行，说一个。\n\n（2）User Story 那一层要不要也编号？\n    你只提了 Epic。Story 若也编，形态大概是「1.2 留言结构化」这种层级号。\n    不编的话 Story 保持现在的纯名字。\n\n另外确认一下我理解对没有：你说的「Epic 现在有数字标识」，指的是 epics.json 里\nEpic 的排列顺序（第几个）——那个顺序有实际含义（构建顺序，ready 队列也按它排），\n只是界面上看不见。如果你指的是别的东西，直接说。"
@@ -107,6 +107,18 @@
       "re": null,
       "supersedes": [],
       "text": "人工验收通过（2026-09-01）：product 与 ui 关卡由人勾选，卡片推进 done。"
+    },
+    {
+      "id": "c-20260901T164555-3f72",
+      "at": "2026-09-01T16:45:55+07:00",
+      "author": "claude-code",
+      "authorKind": "agent",
+      "kind": "progress",
+      "status": "done",
+      "statusAt": "2026-09-01T16:45:55+07:00",
+      "re": null,
+      "supersedes": [],
+      "text": "人的答复留痕：2026-09-01 人在对话里答「3. 满意」，即确认两项默认取值——编号从 0 起、User Story 不编号。当时 ask --wait 超时没等到，我按项目既有惯例取了默认值并留痕，现在人确认了。这条 question 随之关闭。"
     }
   ]
 }
